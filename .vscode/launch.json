@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "1. Chạy Server",
+      "request": "launch",
+      "mainClass": "server.GameServer",
+      "projectName": "do-min-doi-khang"
+    },
+    {
+      "type": "java",
+      "name": "2. Chạy Client (localhost)",
+      "request": "launch",
+      "mainClass": "client.ClientMain",
+      "projectName": "do-min-doi-khang"
+    },
+    {
+      "type": "java",
+      "name": "3. Chạy Client (nối máy khác - sửa IP trong args)",
+      "request": "launch",
+      "mainClass": "client.ClientMain",
+      "args": "192.168.1.5",
+      "projectName": "do-min-doi-khang"
+    }
+  ]
+}

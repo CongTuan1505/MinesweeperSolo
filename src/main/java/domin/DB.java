@@ -144,5 +144,178 @@ public final class DB {
         }
     }
 
+    // ---- Query methods cho HomeScreen ----
+
+    /**
+     * Lấy thông tin người chơi: [score, wins, losses, draws].
+     */
+    static int[] getProfile(String username) throws SQLException {
+        String sql = "SELECT score, wins, losses, draws FROM users WHERE username = ?";
+        try (Connection con = getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return new int[]{
+                        rs.getInt("score"),
+                        rs.getInt("wins"),
+                        rs.getInt("losses"),
+                        rs.getInt("draws")
+                    };
+                }
+            }
+        }
+        return new int[]{0, 0, 0, 0};
+    }
+
+    /**
+     * Lấy điểm của một người chơi.
+     */
+    static int getScore(String username) throws SQLException {
+        String sql = "SELECT score FROM users WHERE username = ?";
+        try (Connection con = getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("score");
+                }
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Cập nhật ảnh đại diện người chơi (Base64).
+     */
+    static void updateAvatar(String username, String avatarData) throws SQLException {
+        ensureAvatarColumn();
+        String sql = "UPDATE users SET avatar = ? WHERE username = ?";
+        try (Connection con = getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, avatarData);
+            ps.setString(2, username);
+            ps.executeUpdate();
+        }
+    }
+
+    /**
+     * Lấy ảnh đại diện (Base64) của người chơi.
+     */
+    static String getAvatar(String username) throws SQLException {
+        ensureAvatarColumn();
+        String sql = "SELECT avatar FROM users WHERE username = ?";
+        try (Connection con = getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String av = rs.getString("avatar");
+                    return av != null ? av : "";
+                }
+            }
+        }
+        return "";
+    }
+
+    private static volatile boolean avatarColumnChecked = false;
+    private static void ensureAvatarColumn() {
+        if (avatarColumnChecked) return;
+        try (Connection con = getConnection()) {
+            java.sql.DatabaseMetaData meta = con.getMetaData();
+            try (ResultSet rs = meta.getColumns(null, null, "users", "avatar")) {
+                if (!rs.next()) {
+                    try (java.sql.Statement st = con.createStatement()) {
+                        st.executeUpdate("ALTER TABLE users ADD COLUMN avatar MEDIUMTEXT NULL");
+                    }
+                }
+            }
+            avatarColumnChecked = true;
+        } catch (SQLException ignored) {
+            avatarColumnChecked = true;
+        }
+    }
+
+    /**
+     * Lấy bảng xếp hạng top N người chơi.
+     * Quy tắc sắp xếp: score DESC, wins DESC, losses ASC.
+     * Trả về chuỗi: name~score~wins~losses~draws;...
+     */
+    static String getLeaderboard(int limit) throws SQLException {
+        String sql = "SELECT username, score, wins, losses, draws FROM users "
+                   + "ORDER BY score DESC, wins DESC, losses ASC LIMIT ?";
+        StringBuilder sb = new StringBuilder();
+        try (Connection con = getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                boolean first = true;
+                while (rs.next()) {
+                    if (!first) sb.append(';');
+                    sb.append(rs.getString("username")).append('~')
+                      .append(rs.getInt("score")).append('~')
+                      .append(rs.getInt("wins")).append('~')
+                      .append(rs.getInt("losses")).append('~')
+                      .append(rs.getInt("draws"));
+                    first = false;
+                }
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Lấy danh sách trận đấu gần đây của một người chơi.
+     * Trả về chuỗi: opponent~result~points~duration~date;...
+     */
+    static String getRecentMatches(String username, int limit) throws SQLException {
+        String sql = "SELECT player1, player2, result, reason, duration_sec, "
+                   + "DATE_FORMAT(played_at, '%Y-%m-%d %H:%i') as played_time "
+                   + "FROM matches WHERE player1 = ? OR player2 = ? "
+                   + "ORDER BY played_at DESC LIMIT ?";
+        StringBuilder sb = new StringBuilder();
+        try (Connection con = getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, username);
+            ps.setString(2, username);
+            ps.setInt(3, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                boolean first = true;
+                while (rs.next()) {
+                    String p1 = rs.getString("player1");
+                    String p2 = rs.getString("player2");
+                    String matchRes = rs.getString("result");
+                    int duration = rs.getInt("duration_sec");
+                    String date = rs.getString("played_time");
+                    if (date == null) date = "";
+
+                    boolean isP1 = username.equals(p1);
+                    String opp = isP1 ? p2 : p1;
+                    String res;
+                    int points;
+                    if ("DRAW".equals(matchRes)) {
+                        res = "DRAW";
+                        points = 1;
+                    } else if (("P1_WIN".equals(matchRes) && isP1) || ("P2_WIN".equals(matchRes) && !isP1)) {
+                        res = "WIN";
+                        points = 3;
+                    } else {
+                        res = "LOSE";
+                        points = 0;
+                    }
+
+                    if (!first) sb.append(';');
+                    sb.append(opp).append('~')
+                      .append(res).append('~')
+                      .append(points).append('~')
+                      .append(duration).append('~')
+                      .append(date);
+                    first = false;
+                }
+            }
+        }
+        return sb.toString();
+    }
+
     private DB() {}
 }

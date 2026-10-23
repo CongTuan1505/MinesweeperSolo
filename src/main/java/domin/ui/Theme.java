@@ -44,6 +44,33 @@ public final class Theme {
         return Font.SANS_SERIF;
     }
 
+    // ---- Gaming & HomeScreen colors (đồng bộ tông màu với LoginScreen) ----
+    public static final Color BG_DARK         = new Color(240, 242, 246);
+    public static final Color BG_NAVBAR       = new Color(255, 255, 255);
+    public static final Color BG_CARD         = new Color(255, 255, 255);
+    public static final Color BORDER_CARD     = new Color(222, 226, 235);
+    public static final Color TEXT_PRIMARY    = new Color(30, 32, 38);
+    public static final Color TEXT_SECONDARY  = new Color(80, 85, 100);
+    public static final Color TEXT_MUTED      = new Color(140, 145, 158);
+    public static final Color ACCENT_CYAN     = new Color(55, 60, 72);
+    public static final Color ACCENT_GOLD     = new Color(217, 130, 0);
+    public static final Color ACCENT_GREEN    = new Color(40, 160, 80);
+    public static final Color WIN_GREEN       = new Color(40, 160, 80);
+    public static final Color LOSE_RED        = new Color(210, 60, 60);
+    public static final Color DRAW_GOLD       = new Color(200, 130, 20);
+    public static final Color STATUS_ONLINE   = new Color(40, 167, 69);
+    public static final Color STATUS_IN_MATCH = new Color(245, 130, 32);
+    public static final Color BTN_PRIMARY_BG  = new Color(55, 60, 72);
+    public static final Color BTN_DANGER_BG   = new Color(210, 60, 60);
+    public static final Color BTN_SUCCESS_BG  = new Color(40, 160, 80);
+
+    // ---- HomeScreen Typography ----
+    public static final Font TITLE_FONT    = new Font(FONT_FAMILY, Font.BOLD, 18);
+    public static final Font SUBTITLE_FONT = new Font(FONT_FAMILY, Font.BOLD, 14);
+    public static final Font STAT_FONT     = new Font(FONT_FAMILY, Font.BOLD, 16);
+    public static final Font BODY_FONT     = new Font(FONT_FAMILY, Font.PLAIN, 13);
+    public static final Font SMALL_FONT    = new Font(FONT_FAMILY, Font.PLAIN, 11);
+
     // ---- Kích thước ô ----
     public static final int CELL_SIZE = 34;
 

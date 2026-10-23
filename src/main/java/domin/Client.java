@@ -1,8 +1,8 @@
 package domin;
 
 import domin.ui.GameScreen;
+import domin.ui.HomeScreen;
 import domin.ui.LoginScreen;
-import domin.ui.LobbyScreen;
 
 import java.awt.BorderLayout;
 import java.awt.event.WindowAdapter;
@@ -31,7 +31,7 @@ public class Client {
 
     // Các màn hình hiện tại
     private LoginScreen loginScreen;
-    private LobbyScreen lobbyScreen;
+    private HomeScreen homeScreen;
     private GameScreen gameScreen;
 
     Client(String host, int port) throws IOException {
@@ -49,9 +49,9 @@ public class Client {
         });
 
         showLogin();
-        frame.setSize(480, 620);
+        frame.setSize(880, 560);
         frame.setLocationRelativeTo(null);
-        frame.getContentPane().setBackground(new java.awt.Color(15, 23, 42));
+        frame.getContentPane().setBackground(new java.awt.Color(10, 15, 30));
         frame.setVisible(true);
 
         // Luồng nền đọc message từ server (tương tự QuizDoiKhang)
@@ -81,7 +81,7 @@ public class Client {
     }
 
     // ====================================================================
-    //  Chuyển màn hình (tương tự showLobby, match... trong QuizDoiKhang)
+    //  Chuyển màn hình
     // ====================================================================
 
     private void showLogin() {
@@ -93,19 +93,23 @@ public class Client {
         frame.setTitle("Dò mìn đối kháng - Đăng nhập");
     }
 
-    private void showLobby() {
-        lobbyScreen = new LobbyScreen(name, new LobbyScreen.LobbyCallback() {
+    private void showHome() {
+        homeScreen = new HomeScreen(name, new HomeScreen.HomeCallback() {
             @Override
-            public void onFindMatch() { wire.send("FIND_MATCH"); }
-            @Override
-            public void onCancelMatch() { wire.send("CANCEL_MATCH"); }
+            public void send(String message) { wire.send(message); }
         });
         gameScreen = null;
-        switchScreen(lobbyScreen);
-        frame.setTitle("Dò mìn đối kháng - Sảnh chờ");
-        frame.setSize(340, 220);
+        switchScreen(homeScreen);
+        frame.setTitle("Minesweeper Battle - Trang chủ (" + name + ")");
+        frame.setSize(1040, 720);
         frame.setResizable(true);
         frame.setLocationRelativeTo(null);
+
+        // Yêu cầu dữ liệu ban đầu từ server
+        wire.send("GET_PROFILE");
+        wire.send("GET_ONLINE");
+        wire.send("GET_LEADERBOARD");
+        wire.send("GET_HISTORY");
     }
 
     private void showGame(String oppName, int rows, int cols, int mines, int timeLimit) {
@@ -118,7 +122,7 @@ public class Client {
                     @Override
                     public void onSurrender() { wire.send("SURRENDER"); }
                 });
-        lobbyScreen = null;
+        homeScreen = null;
         switchScreen(gameScreen);
         frame.setTitle("Dò mìn đối kháng - " + name + " vs " + oppName);
         frame.pack();
@@ -135,7 +139,7 @@ public class Client {
     }
 
     // ====================================================================
-    //  Nhận message từ Server (tương tự handle trong QuizDoiKhang Client)
+    //  Nhận message từ Server
     // ====================================================================
 
     private void onMessage(String line) {
@@ -144,7 +148,7 @@ public class Client {
             // ---- Login/Register ----
             case "LOGIN_OK": {
                 name = Wire.field(p, 1);
-                showLobby();
+                showHome();
                 break;
             }
             case "LOGIN_FAIL":
@@ -153,9 +157,9 @@ public class Client {
                 String msg = p.length > 1 ? p[1] : "Có lỗi xảy ra";
                 if (loginScreen != null) {
                     loginScreen.setStatus(msg);
-                } else if (lobbyScreen != null) {
-                    lobbyScreen.setStatus(msg);
-                    lobbyScreen.resetButtons();
+                } else if (homeScreen != null) {
+                    homeScreen.setStatus(msg);
+                    homeScreen.resetButtons();
                 }
                 break;
             }
@@ -164,15 +168,80 @@ public class Client {
                 break;
             }
 
-            // ---- Lobby ----
+            // ---- Home / Matchmaking ----
             case "WAITING": {
-                if (lobbyScreen != null) lobbyScreen.setStatus("Đang chờ đối thủ...");
+                if (homeScreen != null) homeScreen.setFindingMatch(true);
                 break;
             }
             case "CANCELED": {
-                if (lobbyScreen != null) {
-                    lobbyScreen.resetButtons();
-                    lobbyScreen.setStatus("Sẵn sàng thi đấu");
+                if (homeScreen != null) {
+                    homeScreen.resetButtons();
+                    homeScreen.setStatus("Sẵn sàng thi đấu");
+                }
+                break;
+            }
+
+            // ---- Realtime Data ----
+            case "PROFILE": {
+                if (homeScreen != null && p.length >= 5) {
+                    try {
+                        homeScreen.setProfile(
+                            Integer.parseInt(p[1]),
+                            Integer.parseInt(p[2]),
+                            Integer.parseInt(p[3]),
+                            Integer.parseInt(p[4])
+                        );
+                        if (p.length >= 6 && !p[5].isEmpty()) {
+                            homeScreen.setAvatarBase64(p[5]);
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+                break;
+            }
+            case "ONLINE_LIST": {
+                if (homeScreen != null) {
+                    homeScreen.setOnlinePlayers(p.length > 1 ? p[1] : "");
+                }
+                break;
+            }
+            case "PLAYER_ONLINE": {
+                if (homeScreen != null && p.length >= 3) {
+                    try {
+                        homeScreen.addOnlinePlayer(p[1], Integer.parseInt(p[2]));
+                    } catch (NumberFormatException ignored) {}
+                }
+                break;
+            }
+            case "PLAYER_OFFLINE": {
+                if (homeScreen != null && p.length >= 2) {
+                    homeScreen.removeOnlinePlayer(p[1]);
+                }
+                break;
+            }
+            case "PLAYER_STATUS": {
+                if (homeScreen != null && p.length >= 3) {
+                    homeScreen.updatePlayerStatus(p[1], p[2]);
+                }
+                break;
+            }
+            case "LEADERBOARD": {
+                if (homeScreen != null) {
+                    homeScreen.setLeaderboard(p.length > 1 ? p[1] : "");
+                }
+                break;
+            }
+            case "HISTORY": {
+                if (homeScreen != null) {
+                    homeScreen.setHistory(p.length > 1 ? p[1] : "");
+                }
+                break;
+            }
+            case "CHALLENGE_RECEIVED": {
+                if (homeScreen != null && p.length >= 3) {
+                    try {
+                        homeScreen.addChallenge(p[1], Integer.parseInt(p[2]));
+                        homeScreen.showNotification("Nhận được lời mời thách đấu từ " + p[1] + "!");
+                    } catch (NumberFormatException ignored) {}
                 }
                 break;
             }
@@ -209,7 +278,11 @@ public class Client {
                 break;
             }
             case "NOTIFY": {
-                if (gameScreen != null) gameScreen.setNotify(p[1]);
+                if (gameScreen != null) {
+                    gameScreen.setNotify(p[1]);
+                } else if (homeScreen != null) {
+                    homeScreen.showNotification(p[1]);
+                }
                 break;
             }
             case "TIME": {
@@ -262,7 +335,7 @@ public class Client {
         JOptionPane.showMessageDialog(frame, message, "Kết quả trận đấu",
                 JOptionPane.INFORMATION_MESSAGE);
 
-        showLobby();
+        showHome();
     }
 
     private String describeReason(String result, String reason) {

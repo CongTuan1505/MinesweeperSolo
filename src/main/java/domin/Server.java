@@ -14,8 +14,10 @@ import java.util.Enumeration;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -42,6 +44,15 @@ public class Server {
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
     private final LinkedList<Peer> queue = new LinkedList<>();
     private final Set<String> online = new HashSet<>();
+    private final Map<String, Peer> activePeers = new ConcurrentHashMap<>();
+
+    void broadcast(String message, Peer exclude) {
+        for (Peer p : activePeers.values()) {
+            if (p != exclude && p.isConnected()) {
+                p.send(message);
+            }
+        }
+    }
 
     // ====================================================================
     //  Peer — đại diện 1 client (tương tự Peer trong QuizDoiKhang)
@@ -156,6 +167,8 @@ public class Server {
                         + Model.COLS + "|" + Model.MINES + "|" + Model.TIME_LIMIT_SEC);
             }
             startMillis = System.currentTimeMillis();
+            broadcast("PLAYER_STATUS|" + players[0].peer.name + "|IN_MATCH", null);
+            broadcast("PLAYER_STATUS|" + players[1].peer.name + "|IN_MATCH", null);
             ticker = scheduler.scheduleAtFixedRate(new Runnable() {
                 @Override
                 public void run() {
@@ -347,6 +360,9 @@ public class Server {
                 me.peer.match = null;
             }
 
+            broadcast("PLAYER_STATUS|" + players[0].peer.name + "|ONLINE", null);
+            broadcast("PLAYER_STATUS|" + players[1].peer.name + "|ONLINE", null);
+
             final String p1 = players[0].peer.name;
             final String p2 = players[1].peer.name;
             final String matchResult = winner == 0 ? "P1_WIN" : (winner == 1 ? "P2_WIN" : "DRAW");
@@ -438,7 +454,11 @@ public class Server {
                         peer.send("LOGIN_FAIL|Tài khoản đang đăng nhập ở nơi khác");
                     } else {
                         peer.name = p[1];
+                        activePeers.put(peer.name, peer);
                         peer.send("LOGIN_OK|" + peer.name);
+                        int sc = 0;
+                        try { sc = DB.getScore(peer.name); } catch (Exception ignored) {}
+                        broadcast("PLAYER_ONLINE|" + peer.name + "|" + sc, peer);
                     }
                     break;
                 }
@@ -468,6 +488,101 @@ public class Server {
                     if (m != null) m.handleSurrender(peer);
                     break;
                 }
+                case "GET_PROFILE": {
+                    if (peer.name != null) {
+                        int[] prof = DB.getProfile(peer.name);
+                        String av = DB.getAvatar(peer.name);
+                        peer.send("PROFILE|" + prof[0] + "|" + prof[1] + "|" + prof[2] + "|" + prof[3] + "|" + av);
+                    }
+                    break;
+                }
+                case "UPDATE_AVATAR": {
+                    if (peer.name != null && p.length >= 2) {
+                        DB.updateAvatar(peer.name, p[1]);
+                        peer.send("NOTIFY|Cập nhật ảnh đại diện thành công!");
+                    }
+                    break;
+                }
+                case "GET_ONLINE": {
+                    StringBuilder sb = new StringBuilder("ONLINE_LIST|");
+                    boolean first = true;
+                    for (Peer pPeer : activePeers.values()) {
+                        if (pPeer.name == null) continue;
+                        if (!first) sb.append(';');
+                        int sc = 0;
+                        try { sc = DB.getScore(pPeer.name); } catch (Exception ignored) {}
+                        String st = (pPeer.match != null) ? "IN_MATCH" : "ONLINE";
+                        sb.append(pPeer.name).append('~').append(sc).append('~').append(st);
+                        first = false;
+                    }
+                    peer.send(sb.toString());
+                    break;
+                }
+                case "GET_LEADERBOARD": {
+                    String lb = DB.getLeaderboard(10);
+                    peer.send("LEADERBOARD|" + lb);
+                    break;
+                }
+                case "GET_HISTORY": {
+                    if (peer.name != null) {
+                        String his = DB.getRecentMatches(peer.name, 10);
+                        peer.send("HISTORY|" + his);
+                    }
+                    break;
+                }
+                case "CHALLENGE": {
+                    if (p.length >= 2 && peer.name != null) {
+                        String targetName = p[1];
+                        if (targetName.equals(peer.name)) {
+                            peer.send("NOTIFY|Bạn không thể tự thách đấu chính mình");
+                        } else {
+                            Peer target = activePeers.get(targetName);
+                            if (target == null || !target.isConnected()) {
+                                peer.send("NOTIFY|Người chơi " + targetName + " hiện không online");
+                            } else if (target.match != null) {
+                                peer.send("NOTIFY|Người chơi " + targetName + " đang trong trận đấu khác");
+                            } else {
+                                int challengerScore = 0;
+                                try { challengerScore = DB.getScore(peer.name); } catch (Exception ignored) {}
+                                target.send("CHALLENGE_RECEIVED|" + peer.name + "|" + challengerScore);
+                                peer.send("NOTIFY|Đã gửi lời mời thách đấu tới " + targetName);
+                            }
+                        }
+                    }
+                    break;
+                }
+                case "CHALLENGE_ACCEPT": {
+                    if (p.length >= 2 && peer.name != null) {
+                        String fromName = p[1];
+                        Peer challenger = activePeers.get(fromName);
+                        if (challenger == null || !challenger.isConnected()) {
+                            peer.send("NOTIFY|Người thách đấu không còn online");
+                        } else if (challenger.match != null) {
+                            peer.send("NOTIFY|Người thách đấu đang trong trận khác");
+                        } else if (peer.match != null) {
+                            peer.send("NOTIFY|Bạn đang trong trận đấu khác");
+                        } else {
+                            removeFromQueue(challenger);
+                            removeFromQueue(peer);
+                            new Match(challenger, peer).start();
+                        }
+                    }
+                    break;
+                }
+                case "CHALLENGE_REJECT": {
+                    if (p.length >= 2 && peer.name != null) {
+                        String fromName = p[1];
+                        Peer challenger = activePeers.get(fromName);
+                        if (challenger != null && challenger.isConnected()) {
+                            challenger.send("NOTIFY|" + peer.name + " đã từ chối lời thách đấu");
+                        }
+                    }
+                    break;
+                }
+                case "LOGOUT": {
+                    cleanup(peer);
+                    break;
+                }
                 default:
                     peer.send("ERROR|Lệnh không hợp lệ");
             }
@@ -485,8 +600,10 @@ public class Server {
         if (m != null) m.handleDisconnect(peer);
         String name = peer.name;
         if (name != null) {
+            activePeers.remove(name);
             markOffline(name);
             peer.name = null;
+            broadcast("PLAYER_OFFLINE|" + name, peer);
         }
         peer.wire.close();
     }

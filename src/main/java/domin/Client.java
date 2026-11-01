@@ -1,8 +1,11 @@
 package domin;
 
+import domin.ui.AdminScreen;
+import domin.ui.AdminSpectatorScreen;
 import domin.ui.GameScreen;
 import domin.ui.HomeScreen;
 import domin.ui.LoginScreen;
+import domin.ui.ResultDialog;
 
 import java.awt.BorderLayout;
 import java.awt.event.WindowAdapter;
@@ -26,20 +29,29 @@ import javax.swing.SwingUtilities;
 public class Client {
 
     private final JFrame frame;
-    private final Wire wire;
+    private Wire wire;
+    private final String host;
+    private final int port;
     private String name;
+    private String currentOpponent;
+    private boolean isLoggingOut = false;
+    private boolean isAdmin = false;
 
     // Các màn hình hiện tại
     private LoginScreen loginScreen;
     private HomeScreen homeScreen;
     private GameScreen gameScreen;
+    private AdminScreen adminScreen;
+    private AdminSpectatorScreen spectatorScreen;
 
     Client(String host, int port) throws IOException {
+        this.host = host;
+        this.port = port;
         Socket socket = new Socket();
         socket.connect(new InetSocketAddress(host, port), 5000);
         wire = new Wire(socket);
 
-        frame = new JFrame("Dò mìn đối kháng");
+        frame = new JFrame("Minesweeper Battle - Đăng nhập");
         frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
             @Override
@@ -48,13 +60,23 @@ public class Client {
             }
         });
 
+        try {
+            java.io.InputStream is = getClass().getResourceAsStream("/images/logotest.png");
+            if (is != null) {
+                frame.setIconImage(javax.imageio.ImageIO.read(is));
+            }
+        } catch (Exception ignored) {}
+
         showLogin();
         frame.setSize(880, 560);
         frame.setLocationRelativeTo(null);
         frame.getContentPane().setBackground(new java.awt.Color(10, 15, 30));
         frame.setVisible(true);
 
-        // Luồng nền đọc message từ server (tương tự QuizDoiKhang)
+        startReaderThread();
+    }
+
+    private void startReaderThread() {
         Thread reader = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -85,23 +107,50 @@ public class Client {
     // ====================================================================
 
     private void showLogin() {
+        homeScreen = null;
+        gameScreen = null;
+        adminScreen = null;
+        spectatorScreen = null;
+        name = null;
+        isAdmin = false;
+        isLoggingOut = false;
         loginScreen = new LoginScreen(new LoginScreen.SendCallback() {
             @Override
             public void send(String message) { wire.send(message); }
         });
         switchScreen(loginScreen);
-        frame.setTitle("Dò mìn đối kháng - Đăng nhập");
+        frame.setTitle("Minesweeper Battle - Đăng nhập");
+        frame.setSize(880, 560);
+        frame.setResizable(false);
+        frame.setLocationRelativeTo(null);
     }
 
     private void showHome() {
+        if (adminScreen != null) adminScreen.stopTimer();
+        adminScreen = null;
+        spectatorScreen = null;
         homeScreen = new HomeScreen(name, new HomeScreen.HomeCallback() {
             @Override
-            public void send(String message) { wire.send(message); }
+            public void send(String message) {
+                if ("LOGOUT".equals(message)) {
+                    isLoggingOut = true;
+                }
+                wire.send(message);
+            }
         });
+        loginScreen = null;
         gameScreen = null;
+        if (isAdmin) {
+            homeScreen.setAdminMode(new Runnable() {
+                @Override
+                public void run() {
+                    showAdmin();
+                }
+            });
+        }
         switchScreen(homeScreen);
-        frame.setTitle("Minesweeper Battle - Trang chủ (" + name + ")");
-        frame.setSize(1040, 720);
+        frame.setTitle("Minesweeper Battle - Online Arena (" + name + ")");
+        frame.setSize(1280, 820);
         frame.setResizable(true);
         frame.setLocationRelativeTo(null);
 
@@ -112,7 +161,79 @@ public class Client {
         wire.send("GET_HISTORY");
     }
 
+    private void showAdmin() {
+        if (adminScreen != null) adminScreen.stopTimer();
+        homeScreen = null;
+        gameScreen = null;
+        spectatorScreen = null;
+        loginScreen = null;
+        adminScreen = new AdminScreen(name, new AdminScreen.AdminCallback() {
+            @Override
+            public void send(String message) {
+                wire.send(message);
+            }
+            @Override
+            public void onSpectate(String matchId, String p1, String p2) {
+                wire.send("SPECTATE_START|" + matchId);
+            }
+            @Override
+            public void onSwitchToPlayerHome() {
+                showHome();
+            }
+            @Override
+            public void onLogout() {
+                isLoggingOut = true;
+                if (adminScreen != null) adminScreen.stopTimer();
+                wire.send("LOGOUT");
+            }
+        });
+        switchScreen(adminScreen);
+        frame.setTitle("Minesweeper Battle - ADMIN Panel (" + name + ")");
+        frame.setSize(1400, 860);
+        frame.setResizable(true);
+        frame.setLocationRelativeTo(null);
+    }
+
+    private void showSpectator(String matchId, String p1, String p2,
+                               int rows, int cols, int mines, int elapsed,
+                               String minesData, String p1Rev, String p1Flags,
+                               String p2Rev, String p2Flags,
+                               int p1Pct, int p2Pct, int p1FlagCount, int p2FlagCount,
+                               String p1Status, String p2Status) {
+        if (adminScreen != null) adminScreen.stopTimer();
+        spectatorScreen = new AdminSpectatorScreen(matchId, p1, p2,
+                rows, cols, mines, elapsed,
+                new AdminSpectatorScreen.SpectatorCallback() {
+                    @Override
+                    public void send(String message) { wire.send(message); }
+                    @Override
+                    public void onExitSpectate() {
+                        wire.send("SPECTATE_STOP");
+                        spectatorScreen = null;
+                        showAdmin();
+                    }
+                });
+        spectatorScreen.initMines(minesData);
+        spectatorScreen.initPlayerRevealed(1, p1Rev);
+        spectatorScreen.initPlayerFlags(1, p1Flags);
+        spectatorScreen.initPlayerRevealed(2, p2Rev);
+        spectatorScreen.initPlayerFlags(2, p2Flags);
+        spectatorScreen.updateProgress(p1Pct, p2Pct, p1FlagCount, p2FlagCount, p1Status, p2Status);
+
+        homeScreen = null;
+        gameScreen = null;
+        adminScreen = null;
+        loginScreen = null;
+        switchScreen(spectatorScreen);
+        frame.setTitle("GIÁM SÁT: " + p1 + " vs " + p2 + " (" + name + ")");
+        frame.setSize(1400, 860);
+        frame.setResizable(true);
+        frame.setLocationRelativeTo(null);
+    }
+
     private void showGame(String oppName, int rows, int cols, int mines, int timeLimit) {
+        if (adminScreen != null) adminScreen.stopTimer();
+        this.currentOpponent = oppName;
         gameScreen = new GameScreen(name, oppName, rows, cols, mines, timeLimit,
                 new GameScreen.GameCallback() {
                     @Override
@@ -123,6 +244,8 @@ public class Client {
                     public void onSurrender() { wire.send("SURRENDER"); }
                 });
         homeScreen = null;
+        adminScreen = null;
+        spectatorScreen = null;
         switchScreen(gameScreen);
         frame.setTitle("Dò mìn đối kháng - " + name + " vs " + oppName);
         frame.pack();
@@ -145,10 +268,20 @@ public class Client {
     private void onMessage(String line) {
         String[] p = Wire.parse(line);
         switch (p[0]) {
-            // ---- Login/Register ----
+            // ---- Login/Register/Logout ----
             case "LOGIN_OK": {
                 name = Wire.field(p, 1);
-                showHome();
+                String role = Wire.field(p, 2);
+                isAdmin = "ADMIN".equalsIgnoreCase(role) || "admin".equalsIgnoreCase(name);
+                if (isAdmin) {
+                    showAdmin();
+                } else {
+                    showHome();
+                }
+                break;
+            }
+            case "LOGOUT_OK": {
+                showLogin();
                 break;
             }
             case "LOGIN_FAIL":
@@ -302,6 +435,125 @@ public class Client {
                 onGameOver(p);
                 break;
             }
+
+            // ---- Admin & Spectator Protocols ----
+            case "ADMIN_STATS": {
+                if (adminScreen != null && p.length >= 5) {
+                    try {
+                        adminScreen.setStats(
+                                Integer.parseInt(p[1]),
+                                Integer.parseInt(p[2]),
+                                Integer.parseInt(p[3]),
+                                Integer.parseInt(p[4])
+                        );
+                    } catch (NumberFormatException ignored) {}
+                }
+                break;
+            }
+            case "ADMIN_MATCH_LIST": {
+                if (adminScreen != null) {
+                    adminScreen.setMatches(p.length > 1 ? p[1] : "");
+                }
+                break;
+            }
+            case "ADMIN_USER_LIST": {
+                if (adminScreen != null) {
+                    adminScreen.setUsers(p.length > 1 ? p[1] : "");
+                }
+                break;
+            }
+            case "ADMIN_HISTORY_LIST": {
+                if (adminScreen != null) {
+                    adminScreen.setHistory(p.length > 1 ? p[1] : "");
+                }
+                break;
+            }
+            case "SPECTATE_INIT": {
+                if (p.length >= 19) {
+                    try {
+                        showSpectator(
+                                p[1], p[2], p[3],
+                                Integer.parseInt(p[4]),
+                                Integer.parseInt(p[5]),
+                                Integer.parseInt(p[6]),
+                                Integer.parseInt(p[7]),
+                                p[8], p[9], p[10], p[11], p[12],
+                                Integer.parseInt(p[13]),
+                                Integer.parseInt(p[14]),
+                                Integer.parseInt(p[15]),
+                                Integer.parseInt(p[16]),
+                                p[17], p[18]
+                        );
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                }
+                break;
+            }
+            case "SPECTATE_OPEN": {
+                if (spectatorScreen != null && p.length >= 3) {
+                    spectatorScreen.handleOpen(p[1], p[2]);
+                }
+                break;
+            }
+            case "SPECTATE_FLAG": {
+                if (spectatorScreen != null && p.length >= 5) {
+                    try {
+                        spectatorScreen.handleFlag(p[1], Integer.parseInt(p[2]), Integer.parseInt(p[3]), Integer.parseInt(p[4]));
+                    } catch (NumberFormatException ignored) {}
+                }
+                break;
+            }
+            case "SPECTATE_PROGRESS": {
+                if (spectatorScreen != null && p.length >= 7) {
+                    try {
+                        spectatorScreen.updateProgress(
+                                Integer.parseInt(p[1]),
+                                Integer.parseInt(p[2]),
+                                Integer.parseInt(p[3]),
+                                Integer.parseInt(p[4]),
+                                p[5], p[6]
+                        );
+                    } catch (NumberFormatException ignored) {}
+                }
+                break;
+            }
+            case "SPECTATE_TIME": {
+                if (spectatorScreen != null && p.length >= 2) {
+                    try {
+                        spectatorScreen.updateTimer(Integer.parseInt(p[1]));
+                    } catch (NumberFormatException ignored) {}
+                }
+                break;
+            }
+            case "SPECTATE_NOTIFY": {
+                if (spectatorScreen != null && p.length >= 2) {
+                    spectatorScreen.addCombatLog(p[1]);
+                }
+                break;
+            }
+            case "SPECTATE_OVER": {
+                if (spectatorScreen != null && p.length >= 8) {
+                    try {
+                        spectatorScreen.handleGameOver(
+                                p[1], p[2],
+                                Integer.parseInt(p[3]),
+                                Integer.parseInt(p[4]),
+                                Integer.parseInt(p[5]),
+                                Integer.parseInt(p[6]),
+                                Integer.parseInt(p[7])
+                        );
+                    } catch (NumberFormatException ignored) {}
+                }
+                break;
+            }
+            case "SPECTATE_STOPPED": {
+                if (spectatorScreen != null) {
+                    spectatorScreen = null;
+                    showAdmin();
+                }
+                break;
+            }
             default:
                 break;
         }
@@ -317,6 +569,12 @@ public class Client {
         String result = p[1];
         String reason = p[2];
         int seconds = Integer.parseInt(p[3]);
+        int mySafeOpened = Integer.parseInt(p[4]);
+        int oppSafeOpened = Integer.parseInt(p[5]);
+        int myFlags = Integer.parseInt(p[6]);
+        int oppFlags = Integer.parseInt(p[7]);
+        int points = Integer.parseInt(p[8]);
+
         String title;
         if (result.equals("WIN")) {
             title = "Bạn đã THẮNG!";
@@ -327,13 +585,10 @@ public class Client {
         }
         gameScreen.setNotify(title);
 
-        String message = title + "\n" + describeReason(result, reason)
-                + "\n\nThời gian: " + GameScreen.format(seconds)
-                + "\nSố ô đã mở: " + p[4] + " (bạn) / " + p[5] + " (đối thủ)"
-                + "\nSố cờ đã đặt: " + p[6] + " (bạn) / " + p[7] + " (đối thủ)"
-                + "\nĐiểm nhận được: +" + p[8];
-        JOptionPane.showMessageDialog(frame, message, "Kết quả trận đấu",
-                JOptionPane.INFORMATION_MESSAGE);
+        ResultDialog dlg = new ResultDialog(frame, result, reason, seconds,
+                mySafeOpened, oppSafeOpened, myFlags, oppFlags, points,
+                name, currentOpponent);
+        dlg.setVisible(true);
 
         showHome();
     }
@@ -376,8 +631,26 @@ public class Client {
     }
 
     private void onDisconnected() {
+        if (isLoggingOut) {
+            isLoggingOut = false;
+            reconnect();
+            return;
+        }
         if (gameScreen == null || !gameScreen.isOver()) {
             JOptionPane.showMessageDialog(frame, "Mất kết nối tới Server");
+            System.exit(0);
+        }
+    }
+
+    private void reconnect() {
+        try {
+            Socket socket = new Socket();
+            socket.connect(new InetSocketAddress(host, port), 5000);
+            wire = new Wire(socket);
+            startReaderThread();
+            showLogin();
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(frame, "Không thể kết nối lại tới Server: " + e.getMessage());
             System.exit(0);
         }
     }

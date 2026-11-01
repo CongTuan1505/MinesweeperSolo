@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     wins          INT          NOT NULL DEFAULT 0, -- Tổng số trận thắng
     losses        INT          NOT NULL DEFAULT 0, -- Tổng số trận thua
     draws         INT          NOT NULL DEFAULT 0, -- Tổng số trận hòa
-    avatar        VARCHAR(255) DEFAULT 'default_avatar.png',
+    avatar        MEDIUMTEXT   NULL,
     is_online     TINYINT(1)   NOT NULL DEFAULT 0, -- 0: Offline, 1: Online
     created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     last_login    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,

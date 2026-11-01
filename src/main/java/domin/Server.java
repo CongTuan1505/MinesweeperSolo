@@ -45,6 +45,8 @@ public class Server {
     private final LinkedList<Peer> queue = new LinkedList<>();
     private final Set<String> online = new HashSet<>();
     private final Map<String, Peer> activePeers = new ConcurrentHashMap<>();
+    private final Map<String, Match> activeMatches = new ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicInteger matchCounter = new java.util.concurrent.atomic.AtomicInteger(0);
 
     void broadcast(String message, Peer exclude) {
         for (Peer p : activePeers.values()) {
@@ -61,6 +63,8 @@ public class Server {
         final Wire wire;
         volatile String name;
         volatile Match match;
+        volatile Match spectatingMatch;
+        volatile boolean isAdmin = false;
 
         Peer(Socket socket) throws IOException {
             this.wire = new Wire(socket);
@@ -140,8 +144,10 @@ public class Server {
     //  Match — phòng đấu giữa 2 người (tương tự Match trong QuizDoiKhang)
     // ====================================================================
     class Match {
+        final String matchId;
         final Board board;
         final Player[] players = new Player[2];
+        final Set<Peer> spectators = ConcurrentHashMap.newKeySet();
         ScheduledFuture<?> ticker;
         long startMillis;
         boolean finished = false;
@@ -152,13 +158,23 @@ public class Server {
 
         /** Dùng seed cố định khi cần kiểm thử. */
         Match(Peer a, Peer b, long seed) {
+            this.matchId = "M" + matchCounter.incrementAndGet();
             this.players[0] = new Player(a);
             this.players[1] = new Player(b);
             this.board = new Board(seed);
         }
 
+        void sendToSpectators(String message) {
+            for (Peer spec : spectators) {
+                if (spec.isConnected()) {
+                    spec.send(message);
+                }
+            }
+        }
+
         // ---- Bắt đầu ván ----
         synchronized void start() {
+            activeMatches.put(matchId, this);
             for (int i = 0; i < 2; i++) {
                 Player me = players[i];
                 Player opp = players[1 - i];
@@ -169,6 +185,7 @@ public class Server {
             startMillis = System.currentTimeMillis();
             broadcast("PLAYER_STATUS|" + players[0].peer.name + "|IN_MATCH", null);
             broadcast("PLAYER_STATUS|" + players[1].peer.name + "|IN_MATCH", null);
+            broadcastAdminMatches();
             ticker = scheduler.scheduleAtFixedRate(new Runnable() {
                 @Override
                 public void run() {
@@ -191,6 +208,7 @@ public class Server {
             if (board.isMine(r, c)) {
                 me.status = Model.ST_MINE;
                 opp.peer.send("NOTIFY|Đối thủ đã đạp trúng mìn");
+                sendToSpectators("SPECTATE_NOTIFY|" + me.peer.name + " đã đạp trúng mìn!");
                 sendProgress();
                 finish(1 - i, "MINE");
                 return;
@@ -204,14 +222,17 @@ public class Server {
                 sb.append(cell[0]).append(',').append(cell[1]).append(',').append(cell[2]);
             }
             me.peer.send(sb.toString());
+            sendToSpectators("SPECTATE_OPEN|" + me.peer.name + "|" + sb.substring(6));
 
             if (opened.size() > 1) {
                 opp.peer.send("NOTIFY|Đối thủ vừa mở thêm một vùng");
+                sendToSpectators("SPECTATE_NOTIFY|" + me.peer.name + " vừa mở thêm một vùng " + opened.size() + " ô");
             }
 
             if (me.openedSafe == Model.SAFE_TOTAL) {
                 me.status = Model.ST_DONE;
                 opp.peer.send("NOTIFY|Đối thủ đã hoàn thành");
+                sendToSpectators("SPECTATE_NOTIFY|" + me.peer.name + " đã hoàn thành toàn bộ bàn mìn!");
                 sendProgress();
                 finish(i, "COMPLETE");
                 return;
@@ -233,6 +254,7 @@ public class Server {
             if (old == 1) me.flags--;
             if (now == 1) me.flags++;
             me.peer.send("FLAG|" + r + "|" + c + "|" + now);
+            sendToSpectators("SPECTATE_FLAG|" + me.peer.name + "|" + r + "|" + c + "|" + now);
             sendProgress();
         }
 
@@ -243,6 +265,7 @@ public class Server {
             if (i < 0) return;
             players[i].status = Model.ST_SURRENDER;
             players[1 - i].peer.send("NOTIFY|Đối thủ đã bỏ cuộc");
+            sendToSpectators("SPECTATE_NOTIFY|" + players[i].peer.name + " đã đầu hàng / bỏ cuộc");
             sendProgress();
             finish(1 - i, "SURRENDER");
         }
@@ -254,6 +277,7 @@ public class Server {
             if (i < 0) return;
             players[i].status = Model.ST_DISCONNECT;
             players[1 - i].peer.send("NOTIFY|Đối thủ bị mất kết nối");
+            sendToSpectators("SPECTATE_NOTIFY|" + players[i].peer.name + " đã bị mất kết nối");
             sendProgress();
             finish(1 - i, "DISCONNECT");
         }
@@ -265,14 +289,16 @@ public class Server {
             if (elapsed >= Model.TIME_LIMIT_SEC) {
                 players[0].peer.send("NOTIFY|Hết giờ!");
                 players[1].peer.send("NOTIFY|Hết giờ!");
+                sendToSpectators("SPECTATE_NOTIFY|Hết thời gian thi đấu!");
                 finish(-1, "TIMEOUT");
                 return;
             }
             players[0].peer.send("TIME|" + elapsed);
             players[1].peer.send("TIME|" + elapsed);
+            sendToSpectators("SPECTATE_TIME|" + elapsed);
         }
 
-        private int elapsedSec() {
+        int elapsedSec() {
             return (int) ((System.currentTimeMillis() - startMillis) / 1000);
         }
 
@@ -318,6 +344,9 @@ public class Server {
                 me.peer.send("PROGRESS|" + me.percent() + "|" + opp.percent() + "|" + me.flags + "|"
                         + opp.flags + "|" + me.status + "|" + opp.status);
             }
+            sendToSpectators("SPECTATE_PROGRESS|" + players[0].percent() + "|" + players[1].percent()
+                    + "|" + players[0].flags + "|" + players[1].flags
+                    + "|" + players[0].status + "|" + players[1].status);
         }
 
         private String minesMessage() {
@@ -342,6 +371,7 @@ public class Server {
          */
         private void finish(int winner, String reason) {
             finished = true;
+            activeMatches.remove(matchId);
             if (ticker != null) ticker.cancel(false);
             final int elapsed = elapsedSec();
             final String[] results = new String[2];
@@ -360,8 +390,19 @@ public class Server {
                 me.peer.match = null;
             }
 
+            String winnerName = winner < 0 ? "DRAW" : players[winner].peer.name;
+            sendToSpectators(minesMessage());
+            sendToSpectators("SPECTATE_OVER|" + winnerName + "|" + reason + "|" + elapsed + "|"
+                    + players[0].openedSafe + "|" + players[1].openedSafe + "|"
+                    + players[0].flags + "|" + players[1].flags);
+            for (Peer spec : spectators) {
+                spec.spectatingMatch = null;
+            }
+            spectators.clear();
+
             broadcast("PLAYER_STATUS|" + players[0].peer.name + "|ONLINE", null);
             broadcast("PLAYER_STATUS|" + players[1].peer.name + "|ONLINE", null);
+            broadcastAdminMatches();
 
             final String p1 = players[0].peer.name;
             final String p2 = players[1].peer.name;
@@ -376,6 +417,11 @@ public class Server {
                         DB.saveMatch(p1, p2, matchResult, matchReason, elapsed);
                         DB.updateStats(p1, results[0]);
                         DB.updateStats(p2, results[1]);
+
+                        // Cập nhật ngay profile mới nhất cho 2 người chơi
+                        sendProfile(activePeers.get(p1));
+                        sendProfile(activePeers.get(p2));
+                        broadcastOnlineList();
                     } catch (Throwable e) {
                         System.err.println("Không lưu được kết quả trận vào database: " + e);
                     }
@@ -454,8 +500,9 @@ public class Server {
                         peer.send("LOGIN_FAIL|Tài khoản đang đăng nhập ở nơi khác");
                     } else {
                         peer.name = p[1];
+                        peer.isAdmin = DB.isAdmin(peer.name);
                         activePeers.put(peer.name, peer);
-                        peer.send("LOGIN_OK|" + peer.name);
+                        peer.send("LOGIN_OK|" + peer.name + "|" + (peer.isAdmin ? "ADMIN" : "USER"));
                         int sc = 0;
                         try { sc = DB.getScore(peer.name); } catch (Exception ignored) {}
                         broadcast("PLAYER_ONLINE|" + peer.name + "|" + sc, peer);
@@ -490,15 +537,14 @@ public class Server {
                 }
                 case "GET_PROFILE": {
                     if (peer.name != null) {
-                        int[] prof = DB.getProfile(peer.name);
-                        String av = DB.getAvatar(peer.name);
-                        peer.send("PROFILE|" + prof[0] + "|" + prof[1] + "|" + prof[2] + "|" + prof[3] + "|" + av);
+                        sendProfile(peer);
                     }
                     break;
                 }
                 case "UPDATE_AVATAR": {
                     if (peer.name != null && p.length >= 2) {
                         DB.updateAvatar(peer.name, p[1]);
+                        sendProfile(peer);
                         peer.send("NOTIFY|Cập nhật ảnh đại diện thành công!");
                     }
                     break;
@@ -580,7 +626,118 @@ public class Server {
                     break;
                 }
                 case "LOGOUT": {
-                    cleanup(peer);
+                    if (peer.spectatingMatch != null) {
+                        peer.spectatingMatch.spectators.remove(peer);
+                        peer.spectatingMatch = null;
+                    }
+                    removeFromQueue(peer);
+                    Match m = peer.match;
+                    if (m != null) m.handleDisconnect(peer);
+                    String oldName = peer.name;
+                    if (oldName != null) {
+                        activePeers.remove(oldName);
+                        markOffline(oldName);
+                        peer.name = null;
+                        peer.isAdmin = false;
+                        broadcast("PLAYER_OFFLINE|" + oldName, peer);
+                    }
+                    peer.send("LOGOUT_OK");
+                    break;
+                }
+                case "ADMIN_GET_MATCHES": {
+                    peer.send(buildAdminMatchListMessage());
+                    break;
+                }
+                case "ADMIN_GET_STATS": {
+                    int onlineCount = activePeers.size();
+                    int matchesCount = activeMatches.size();
+                    int totalUsers = DB.getTotalUsers();
+                    int totalMatches = DB.getTotalMatches();
+                    peer.send("ADMIN_STATS|" + onlineCount + "|" + matchesCount + "|" + totalUsers + "|" + totalMatches);
+                    break;
+                }
+                case "ADMIN_GET_USERS": {
+                    String users = DB.getAllUsersForAdmin(50);
+                    peer.send("ADMIN_USER_LIST|" + users);
+                    break;
+                }
+                case "ADMIN_RESET_PASSWORD": {
+                    if (peer.isAdmin && p.length >= 3) {
+                        String targetUser = p[1];
+                        String newPass = p[2];
+                        boolean ok = DB.adminResetPassword(targetUser, newPass);
+                        peer.send(ok ? "NOTIFY|Đã đổi mật khẩu cho người dùng " + targetUser : "ERROR|Không đổi được mật khẩu");
+                        peer.send("ADMIN_USER_LIST|" + DB.getAllUsersForAdmin(50));
+                    }
+                    break;
+                }
+                case "ADMIN_DELETE_USER": {
+                    if (peer.isAdmin && p.length >= 2) {
+                        String targetUser = p[1];
+                        boolean ok = DB.adminDeleteUser(targetUser);
+                        peer.send(ok ? "NOTIFY|Đã xóa tài khoản " + targetUser : "ERROR|Không thể xóa tài khoản này");
+                        peer.send("ADMIN_USER_LIST|" + DB.getAllUsersForAdmin(50));
+                    }
+                    break;
+                }
+                case "ADMIN_RESET_SCORE": {
+                    if (peer.isAdmin && p.length >= 2) {
+                        String targetUser = p[1];
+                        boolean ok = DB.adminResetScore(targetUser);
+                        peer.send(ok ? "NOTIFY|Đã reset điểm cho " + targetUser : "ERROR|Không thể reset điểm");
+                        peer.send("ADMIN_USER_LIST|" + DB.getAllUsersForAdmin(50));
+                    }
+                    break;
+                }
+                case "ADMIN_SET_ROLE": {
+                    if (peer.isAdmin && p.length >= 3) {
+                        String targetUser = p[1];
+                        String role = p[2];
+                        boolean ok = DB.adminSetRole(targetUser, role);
+                        peer.send(ok ? "NOTIFY|Đã cập nhật vai trò " + role + " cho " + targetUser : "ERROR|Không thể đổi vai trò");
+                        peer.send("ADMIN_USER_LIST|" + DB.getAllUsersForAdmin(50));
+                    }
+                    break;
+                }
+                case "ADMIN_GET_HISTORY": {
+                    String history = DB.getAllMatchesForAdmin(50);
+                    peer.send("ADMIN_HISTORY_LIST|" + history);
+                    break;
+                }
+                case "SPECTATE_START": {
+                    String targetId = p.length > 1 ? p[1] : "";
+                    Match targetMatch = null;
+                    if (activeMatches.containsKey(targetId)) {
+                        targetMatch = activeMatches.get(targetId);
+                    } else if (p.length >= 3) {
+                        String p1 = p[1];
+                        String p2 = p[2];
+                        for (Match m : activeMatches.values()) {
+                            if ((m.players[0].peer.name.equalsIgnoreCase(p1) && m.players[1].peer.name.equalsIgnoreCase(p2)) ||
+                                (m.players[0].peer.name.equalsIgnoreCase(p2) && m.players[1].peer.name.equalsIgnoreCase(p1))) {
+                                targetMatch = m;
+                                break;
+                            }
+                        }
+                    }
+                    if (targetMatch == null || targetMatch.finished) {
+                        peer.send("ERROR|Trận đấu đã kết thúc hoặc không còn tồn tại");
+                    } else {
+                        if (peer.spectatingMatch != null) {
+                            peer.spectatingMatch.spectators.remove(peer);
+                        }
+                        peer.spectatingMatch = targetMatch;
+                        targetMatch.spectators.add(peer);
+                        sendSpectateInit(peer, targetMatch);
+                    }
+                    break;
+                }
+                case "SPECTATE_STOP": {
+                    if (peer.spectatingMatch != null) {
+                        peer.spectatingMatch.spectators.remove(peer);
+                        peer.spectatingMatch = null;
+                    }
+                    peer.send("SPECTATE_STOPPED");
                     break;
                 }
                 default:
@@ -595,6 +752,10 @@ public class Server {
     }
 
     private void cleanup(Peer peer) {
+        if (peer.spectatingMatch != null) {
+            peer.spectatingMatch.spectators.remove(peer);
+            peer.spectatingMatch = null;
+        }
         removeFromQueue(peer);
         Match m = peer.match;
         if (m != null) m.handleDisconnect(peer);
@@ -603,9 +764,130 @@ public class Server {
             activePeers.remove(name);
             markOffline(name);
             peer.name = null;
+            peer.isAdmin = false;
             broadcast("PLAYER_OFFLINE|" + name, peer);
         }
         peer.wire.close();
+    }
+
+    // ====================================================================
+    //  Admin & Spectate Utilities
+    // ====================================================================
+
+    void broadcastAdminMatches() {
+        String msg = buildAdminMatchListMessage();
+        for (Peer p : activePeers.values()) {
+            if (p.isAdmin && p.isConnected()) {
+                p.send(msg);
+            }
+        }
+    }
+
+    String buildAdminMatchListMessage() {
+        StringBuilder sb = new StringBuilder("ADMIN_MATCH_LIST|");
+        boolean first = true;
+        for (Match m : activeMatches.values()) {
+            if (m.finished) continue;
+            if (!first) sb.append(';');
+            sb.append(m.players[0].peer.name).append('~')
+              .append(m.players[1].peer.name).append('~')
+              .append(m.matchId).append('~')
+              .append(m.elapsedSec()).append('~')
+              .append(m.players[0].percent()).append('~')
+              .append(m.players[1].percent()).append('~')
+              .append(m.players[0].flags).append('~')
+              .append(m.players[1].flags).append('~')
+              .append(m.players[0].status).append('~')
+              .append(m.players[1].status);
+            first = false;
+        }
+        return sb.toString();
+    }
+
+    void sendSpectateInit(Peer peer, Match m) {
+        StringBuilder sb = new StringBuilder("SPECTATE_INIT|");
+        sb.append(m.matchId).append('|')
+          .append(m.players[0].peer.name).append('|')
+          .append(m.players[1].peer.name).append('|')
+          .append(Model.ROWS).append('|')
+          .append(Model.COLS).append('|')
+          .append(Model.MINES).append('|')
+          .append(m.elapsedSec()).append('|');
+
+        // mineLocations: r,c;r,c;...
+        boolean firstMine = true;
+        for (int r = 0; r < Model.ROWS; r++) {
+            for (int c = 0; c < Model.COLS; c++) {
+                if (m.board.isMine(r, c)) {
+                    if (!firstMine) sb.append(';');
+                    sb.append(r).append(',').append(c);
+                    firstMine = false;
+                }
+            }
+        }
+        sb.append('|');
+
+        // p1Revealed: r,c,adj;...
+        boolean firstP1Rev = true;
+        for (int r = 0; r < Model.ROWS; r++) {
+            for (int c = 0; c < Model.COLS; c++) {
+                if (m.players[0].revealed[r][c]) {
+                    if (!firstP1Rev) sb.append(';');
+                    sb.append(r).append(',').append(c).append(',').append(m.board.adjacent(r, c));
+                    firstP1Rev = false;
+                }
+            }
+        }
+        sb.append('|');
+
+        // p1Flags: r,c,flag;...
+        boolean firstP1Flag = true;
+        for (int r = 0; r < Model.ROWS; r++) {
+            for (int c = 0; c < Model.COLS; c++) {
+                if (m.players[0].flag[r][c] != 0) {
+                    if (!firstP1Flag) sb.append(';');
+                    sb.append(r).append(',').append(c).append(',').append(m.players[0].flag[r][c]);
+                    firstP1Flag = false;
+                }
+            }
+        }
+        sb.append('|');
+
+        // p2Revealed: r,c,adj;...
+        boolean firstP2Rev = true;
+        for (int r = 0; r < Model.ROWS; r++) {
+            for (int c = 0; c < Model.COLS; c++) {
+                if (m.players[1].revealed[r][c]) {
+                    if (!firstP2Rev) sb.append(';');
+                    sb.append(r).append(',').append(c).append(',').append(m.board.adjacent(r, c));
+                    firstP2Rev = false;
+                }
+            }
+        }
+        sb.append('|');
+
+        // p2Flags: r,c,flag;...
+        boolean firstP2Flag = true;
+        for (int r = 0; r < Model.ROWS; r++) {
+            for (int c = 0; c < Model.COLS; c++) {
+                if (m.players[1].flag[r][c] != 0) {
+                    if (!firstP2Flag) sb.append(';');
+                    sb.append(r).append(',').append(c).append(',').append(m.players[1].flag[r][c]);
+                    firstP2Flag = false;
+                }
+            }
+        }
+        sb.append('|');
+
+        // stats: p1Percent, p2Percent, p1Flags, p2Flags, p1Status, p2Status
+        sb.append(m.players[0].percent()).append('|')
+          .append(m.players[1].percent()).append('|')
+          .append(m.players[0].flags).append('|')
+          .append(m.players[1].flags).append('|')
+          .append(m.players[0].status).append('|')
+          .append(m.players[1].status);
+
+        peer.send(sb.toString());
     }
 
     // ====================================================================
@@ -628,10 +910,37 @@ public class Server {
         } catch (Exception ignored) {}
     }
 
+    void sendProfile(Peer peer) {
+        if (peer != null && peer.isConnected() && peer.name != null) {
+            try {
+                int[] prof = DB.getProfile(peer.name);
+                String av = DB.getAvatar(peer.name);
+                peer.send("PROFILE|" + prof[0] + "|" + prof[1] + "|" + prof[2] + "|" + prof[3] + "|" + av);
+            } catch (Exception ignored) {}
+        }
+    }
+
+    void broadcastOnlineList() {
+        StringBuilder sb = new StringBuilder("ONLINE_LIST|");
+        boolean first = true;
+        for (Peer pPeer : activePeers.values()) {
+            if (pPeer.name == null) continue;
+            if (!first) sb.append(';');
+            int sc = 0;
+            try { sc = DB.getScore(pPeer.name); } catch (Exception ignored) {}
+            String st = (pPeer.match != null) ? "IN_MATCH" : "ONLINE";
+            sb.append(pPeer.name).append('~').append(sc).append('~').append(st);
+            first = false;
+        }
+        broadcast(sb.toString(), null);
+    }
+
     // ====================================================================
     //  main — Chạy: java domin.Server [port]
     // ====================================================================
     public static void main(String[] args) throws IOException {
+        DB.ensureAvatarColumn();
+        DB.ensureRoleColumn();
         int port = args.length > 0 ? Integer.parseInt(args[0]) : Model.PORT;
         Server app = new Server();
         try (ServerSocket socket = new ServerSocket(port)) {

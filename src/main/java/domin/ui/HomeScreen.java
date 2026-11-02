@@ -855,7 +855,7 @@ public class HomeScreen extends JPanel {
         stage.add(Box.createVerticalStrut(18));
 
         // 7. Queue Info pill
-        JLabel queueInfo = new JLabel("● Hàng chờ trung bình: ~8s  •  Hệ thống ghép trận công bằng");
+        JLabel queueInfo = new JLabel("● Cần 2 người chơi kết nối cùng Server và cùng tìm trận");
         queueInfo.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.PLAIN, 10));
         queueInfo.setForeground(Theme.TEXT_MUTED);
         queueInfo.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -1818,7 +1818,7 @@ public class HomeScreen extends JPanel {
             @Override
             public void actionPerformed(ActionEvent e) {
                 searchDots = (searchDots % 3) + 1;
-                StringBuilder sb = new StringBuilder("ĐANG TÌM ĐỐI THỦ");
+                StringBuilder sb = new StringBuilder("ĐANG CHỜ NGƯỜI CHƠI THỨ HAI");
                 for (int i = 0; i < searchDots; i++) sb.append(".");
                 matchmakingStatusLabel.setText(sb.toString());
                 matchmakingStatusLabel.setForeground(Theme.ACCENT_CYAN);

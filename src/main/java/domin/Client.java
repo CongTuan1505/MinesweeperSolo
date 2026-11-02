@@ -13,7 +13,6 @@ import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.util.Scanner;
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
@@ -119,7 +118,7 @@ public class Client {
             public void send(String message) { wire.send(message); }
         });
         switchScreen(loginScreen);
-        frame.setTitle("Minesweeper Battle - Đăng nhập");
+        frame.setTitle("Minesweeper Battle - Đăng nhập - " + host + ":" + port);
         frame.setSize(880, 560);
         frame.setResizable(false);
         frame.setLocationRelativeTo(null);
@@ -149,7 +148,7 @@ public class Client {
             });
         }
         switchScreen(homeScreen);
-        frame.setTitle("Minesweeper Battle - Online Arena (" + name + ")");
+        frame.setTitle("Minesweeper Battle - Online Arena (" + name + ") - " + host + ":" + port);
         frame.setSize(1280, 820);
         frame.setResizable(true);
         frame.setLocationRelativeTo(null);
@@ -664,9 +663,12 @@ public class Client {
         if (args.length > 0) {
             host = args[0];
         } else {
-            Scanner sc = new Scanner(System.in);
-            System.out.print("Nhập địa chỉ IP Server (Enter = localhost): ");
-            String input = sc.nextLine().trim();
+            String input = JOptionPane.showInputDialog(null,
+                    "Nhập IP máy chạy Server (cổng " + Model.PORT + ").\n"
+                    + "Hai người chơi phải kết nối cùng một Server:",
+                    "Kết nối Server", JOptionPane.QUESTION_MESSAGE);
+            if (input == null) return;
+            input = input.trim();
             host = input.isEmpty() ? "localhost" : input;
         }
         System.out.println("Đang kết nối tới Server: " + host);

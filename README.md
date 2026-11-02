@@ -78,7 +78,8 @@ Lần chạy đầu `mvn` sẽ tự tải `mysql-connector-j` và `exec-maven-pl
    ```bash
    ./run-client.sh 192.168.1.5      # thay bằng IP thật của máy A
    ```
-   hoặc mở Client xong gõ IP đó vào ô **"Địa chỉ Server"** trên giao diện đăng nhập.
+   hoặc chạy Client không có tham số và nhập IP đó trong hộp thoại **"Kết nối Server"** khi mở ứng dụng.
+   Cả hai Client phải kết nối tới cùng một IP/cổng Server; `localhost` chỉ trỏ tới chính máy đang chạy Client.
 3. Cả hai máy đăng ký/đăng nhập tài khoản riêng, bấm **"Tìm trận"** — ai bấm trước sẽ chờ
    (`WAITING`), người thứ hai bấm sẽ ghép trận ngay.
 

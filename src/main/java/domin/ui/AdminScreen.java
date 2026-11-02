@@ -287,17 +287,6 @@ public class AdminScreen extends JPanel {
             }
         });
 
-        // Switch to Player Mode Button
-        JButton playerModeBtn = createStyledButton("Vào Sảnh Chơi", Theme.PRIMARY, Color.WHITE);
-        playerModeBtn.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                if (callback != null) {
-                    callback.onSwitchToPlayerHome();
-                }
-            }
-        });
-
         // Logout Button
         JButton logoutBtn = createStyledButton("Đăng Xuất", new Color(0x3B, 0x1A, 0x20), new Color(0xF8, 0x71, 0x71));
         logoutBtn.addActionListener(new ActionListener() {
@@ -311,7 +300,6 @@ public class AdminScreen extends JPanel {
 
         rightActions.add(userChip);
         rightActions.add(refreshBtn);
-        rightActions.add(playerModeBtn);
         rightActions.add(logoutBtn);
 
         bar.add(brandBox, BorderLayout.WEST);
@@ -386,9 +374,9 @@ public class AdminScreen extends JPanel {
         JPanel tabsRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         tabsRow.setOpaque(false);
 
-        tabMatchesBtn = createTabButton("⚔ CÁC CẶP ĐẤU ĐANG THI ĐẤU", true);
-        tabUsersBtn = createTabButton("👥 QUẢN LÝ NGƯỜI CHƠI", false);
-        tabHistoryBtn = createTabButton("📜 LỊCH SỬ TẤT CẢ TRẬN ĐẤU", false);
+        tabMatchesBtn = createTabButton("CÁC CẶP ĐẤU ĐANG THI ĐẤU", true);
+        tabUsersBtn = createTabButton("QUẢN LÝ NGƯỜI CHƠI", false);
+        tabHistoryBtn = createTabButton("LỊCH SỬ TẤT CẢ TRẬN ĐẤU", false);
 
         tabMatchesBtn.addActionListener(new ActionListener() {
             @Override
@@ -726,10 +714,10 @@ public class AdminScreen extends JPanel {
         final JPanel actionGroup = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         actionGroup.setOpaque(false);
 
-        final JButton resetPassBtn = createStyledButton("🔑 Đổi Mật Khẩu", new Color(0x25, 0x63, 0xEB), Color.WHITE);
-        final JButton resetScoreBtn = createStyledButton("🔄 Reset Điểm", new Color(0xD9, 0x77, 0x06), Color.WHITE);
-        final JButton setRoleBtn = createStyledButton("👑 Đổi Quyền", new Color(0x7C, 0x3A, 0xED), Color.WHITE);
-        final JButton deleteUserBtn = createStyledButton("🗑 Xóa Tài Khoản", new Color(0xDC, 0x26, 0x26), Color.WHITE);
+        final JButton resetPassBtn = createStyledButton("Đổi Mật Khẩu", new Color(0x25, 0x63, 0xEB), Color.WHITE);
+        final JButton resetScoreBtn = createStyledButton("Reset Điểm", new Color(0xD9, 0x77, 0x06), Color.WHITE);
+        final JButton setRoleBtn = createStyledButton("Đổi Quyền", new Color(0x7C, 0x3A, 0xED), Color.WHITE);
+        final JButton deleteUserBtn = createStyledButton("Xóa Tài Khoản", new Color(0xDC, 0x26, 0x26), Color.WHITE);
 
         resetPassBtn.setEnabled(false);
         resetScoreBtn.setEnabled(false);
@@ -1006,7 +994,9 @@ public class AdminScreen extends JPanel {
             protected void paintComponent(Graphics g) {
                 Graphics2D g2 = (Graphics2D) g.create();
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                if (getModel().isRollover()) {
+                if (!isEnabled()) {
+                    g2.setColor(new Color(0x1A, 0x24, 0x38));
+                } else if (getModel().isRollover()) {
                     g2.setColor(bg.brighter());
                 } else {
                     g2.setColor(bg);

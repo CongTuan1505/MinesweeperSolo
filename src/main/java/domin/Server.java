@@ -505,7 +505,9 @@ public class Server {
                         peer.send("LOGIN_OK|" + peer.name + "|" + (peer.isAdmin ? "ADMIN" : "USER"));
                         int sc = 0;
                         try { sc = DB.getScore(peer.name); } catch (Exception ignored) {}
-                        broadcast("PLAYER_ONLINE|" + peer.name + "|" + sc, peer);
+                        if (!peer.isAdmin && !"admin".equalsIgnoreCase(peer.name)) {
+                            broadcast("PLAYER_ONLINE|" + peer.name + "|" + sc, peer);
+                        }
                     }
                     break;
                 }
@@ -553,7 +555,7 @@ public class Server {
                     StringBuilder sb = new StringBuilder("ONLINE_LIST|");
                     boolean first = true;
                     for (Peer pPeer : activePeers.values()) {
-                        if (pPeer.name == null) continue;
+                        if (pPeer.name == null || pPeer.isAdmin || "admin".equalsIgnoreCase(pPeer.name)) continue;
                         if (!first) sb.append(';');
                         int sc = 0;
                         try { sc = DB.getScore(pPeer.name); } catch (Exception ignored) {}
@@ -915,7 +917,8 @@ public class Server {
             try {
                 int[] prof = DB.getProfile(peer.name);
                 String av = DB.getAvatar(peer.name);
-                peer.send("PROFILE|" + prof[0] + "|" + prof[1] + "|" + prof[2] + "|" + prof[3] + "|" + av);
+                int rank = DB.getUserRank(peer.name);
+                peer.send("PROFILE|" + prof[0] + "|" + prof[1] + "|" + prof[2] + "|" + prof[3] + "|" + (av != null ? av : "") + "|" + rank);
             } catch (Exception ignored) {}
         }
     }
@@ -924,7 +927,7 @@ public class Server {
         StringBuilder sb = new StringBuilder("ONLINE_LIST|");
         boolean first = true;
         for (Peer pPeer : activePeers.values()) {
-            if (pPeer.name == null) continue;
+            if (pPeer.name == null || pPeer.isAdmin || "admin".equalsIgnoreCase(pPeer.name)) continue;
             if (!first) sb.append(';');
             int sc = 0;
             try { sc = DB.getScore(pPeer.name); } catch (Exception ignored) {}

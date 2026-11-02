@@ -450,7 +450,9 @@ public final class DB {
      * Trả về chuỗi: name~score~wins~losses~draws;...
      */
     static String getLeaderboard(int limit) throws SQLException {
+        ensureRoleColumn();
         String sql = "SELECT username, score, wins, losses, draws FROM users "
+                   + "WHERE (role IS NULL OR UPPER(role) != 'ADMIN') AND LOWER(username) != 'admin' "
                    + "ORDER BY score DESC, wins DESC, losses ASC LIMIT ?";
         StringBuilder sb = new StringBuilder();
         try (Connection con = getConnection();
@@ -470,6 +472,33 @@ public final class DB {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Lấy thứ hạng của một người chơi trong bảng xếp hạng.
+     */
+    static int getUserRank(String username) {
+        if (username == null || "admin".equalsIgnoreCase(username)) return 0;
+        ensureRoleColumn();
+        String sql = "SELECT COUNT(*) + 1 AS user_rank FROM users u1 "
+                   + "JOIN users u2 ON u2.username = ? "
+                   + "WHERE (u1.role IS NULL OR UPPER(u1.role) != 'ADMIN') "
+                   + "  AND LOWER(u1.username) != 'admin' "
+                   + "  AND (u1.score > u2.score "
+                   + "       OR (u1.score = u2.score AND u1.wins > u2.wins) "
+                   + "       OR (u1.score = u2.score AND u1.wins = u2.wins AND u1.losses < u2.losses))";
+        try (Connection con = getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("user_rank");
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Lỗi getUserRank: " + e.getMessage());
+        }
+        return 0;
     }
 
     /**

@@ -81,7 +81,7 @@ public class HomeScreen extends JPanel {
     // ================================================================
 
     private static final int LEFT_PANEL_WIDTH  = 260;
-    private static final int RIGHT_PANEL_WIDTH = 290;
+    private static final int RIGHT_PANEL_WIDTH = 300;
     private static final int CORNER_RADIUS     = 14;
 
     private static final String TAB_LOBBY       = "TAB_LOBBY";
@@ -100,9 +100,11 @@ public class HomeScreen extends JPanel {
     private int wins = 0;
     private int losses = 0;
     private int draws = 0;
+    private int myRank = 0;
 
     private final List<String[]> onlinePlayers = new ArrayList<>();
     private final List<String[]> challengeList = new ArrayList<>();
+    private String selectedPlayerToChallenge = null;
 
     private BufferedImage logoImage;
     private BufferedImage customAvatar;
@@ -122,7 +124,6 @@ public class HomeScreen extends JPanel {
     private JPanel avatarFramePanel;
     private JLabel playerNameLabel;
     private JLabel rankBadgeLabel;
-    private JLabel playerLevelLabel;
     private JLabel profileScoreLabel;
     private JLabel winRateLabel;
     private JLabel statWinsVal, statLossesVal, statDrawsVal, statTotalVal;
@@ -465,7 +466,7 @@ public class HomeScreen extends JPanel {
         ));
 
         // Header with user info
-        JLabel titleItem = new JLabel("  " + username + "  (" + getRank(score) + ")");
+        JLabel titleItem = new JLabel("  " + username + "  (" + (myRank > 0 ? "Top " + myRank : "Top 1") + ")");
         titleItem.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 11));
         titleItem.setForeground(Theme.ACCENT_CYAN);
         titleItem.setBorder(new EmptyBorder(6, 12, 6, 12));
@@ -640,19 +641,11 @@ public class HomeScreen extends JPanel {
         leftPanel.add(Box.createVerticalStrut(4));
 
         // Rank Badge Pill (no emoji to prevent square tofu)
-        rankBadgeLabel = new JLabel("HẠNG: " + getRank(score));
-        rankBadgeLabel.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 11));
+        rankBadgeLabel = new JLabel(myRank > 0 ? "Top " + myRank : "Top 1");
+        rankBadgeLabel.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 12));
         rankBadgeLabel.setForeground(Theme.ACCENT_CYAN);
         rankBadgeLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         leftPanel.add(rankBadgeLabel);
-        leftPanel.add(Box.createVerticalStrut(2));
-
-        // Level Label
-        playerLevelLabel = new JLabel("CẤP ĐỘ 1");
-        playerLevelLabel.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 10));
-        playerLevelLabel.setForeground(Theme.TEXT_MUTED);
-        playerLevelLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        leftPanel.add(playerLevelLabel);
         leftPanel.add(Box.createVerticalStrut(10));
 
         // Score display
@@ -789,18 +782,11 @@ public class HomeScreen extends JPanel {
         stage.add(Box.createVerticalStrut(10));
 
         // 3. Hero Titles
-        JLabel arenaTitle = new JLabel("ĐẤU TRƯỜNG DÒ MÌN");
-        arenaTitle.setFont(new Font(Theme.TITLE_FONT.getFamily(), Font.BOLD, 26));
+        JLabel arenaTitle = new JLabel("MINESWEEPER");
+        arenaTitle.setFont(new Font(Theme.TITLE_FONT.getFamily(), Font.BOLD, 28));
         arenaTitle.setForeground(Theme.TEXT_PRIMARY);
         arenaTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
         stage.add(arenaTitle);
-        stage.add(Box.createVerticalStrut(4));
-
-        JLabel arenaSubtitle = new JLabel("ĐẤU TRƯỜNG 1v1  •  BÀN MÌN 9×9  •  ĐỐI KHÁNG THỜI GIAN THỰC");
-        arenaSubtitle.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 11));
-        arenaSubtitle.setForeground(Theme.ACCENT_CYAN);
-        arenaSubtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
-        stage.add(arenaSubtitle);
         stage.add(Box.createVerticalStrut(26));
 
         // 4. THE MASSIVE "TÌM TRẬN ĐẤU" BUTTON (No emojis)
@@ -925,7 +911,7 @@ public class HomeScreen extends JPanel {
     private JPanel createOnlinePlayerRow(final String name, int pScore, String status) {
         final boolean isMe = name.equals(username);
         final boolean isOnline = "ONLINE".equalsIgnoreCase(status);
-        final Color statusColor = isOnline ? Theme.STATUS_ONLINE : Theme.STATUS_IN_MATCH;
+        final Color statusColor = isOnline ? Theme.SUCCESS : Theme.WARNING;
 
         final JPanel row = new JPanel(new BorderLayout(8, 0)) {
             private boolean hovered = false;
@@ -939,15 +925,32 @@ public class HomeScreen extends JPanel {
                     g2.setColor(new Color(0x10, 0x17, 0x2C, 160));
                 }
                 g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                if (!isMe && isOnline && name.equals(selectedPlayerToChallenge)) {
+                    g2.setColor(Theme.ACCENT_CYAN);
+                    g2.setStroke(new BasicStroke(1.2f));
+                    g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
+                }
                 g2.dispose();
             }
             public void setHovered(boolean h) { this.hovered = h; repaint(); }
         };
         row.setOpaque(false);
-        row.setBorder(new EmptyBorder(8, 8, 8, 8));
+        row.setBorder(new EmptyBorder(8, 10, 8, 10));
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
 
-        row.addMouseListener(new MouseAdapter() {
+        // Click listener on row to select player and show challenge button
+        MouseAdapter selectRowAdapter = new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (!isMe && isOnline) {
+                    if (name.equals(selectedPlayerToChallenge)) {
+                        selectedPlayerToChallenge = null;
+                    } else {
+                        selectedPlayerToChallenge = name;
+                    }
+                    refreshOnlineList();
+                }
+            }
             @Override
             public void mouseEntered(MouseEvent e) {
                 try { row.getClass().getMethod("setHovered", boolean.class).invoke(row, true); } catch (Exception ignored) {}
@@ -956,11 +959,17 @@ public class HomeScreen extends JPanel {
             public void mouseExited(MouseEvent e) {
                 try { row.getClass().getMethod("setHovered", boolean.class).invoke(row, false); } catch (Exception ignored) {}
             }
-        });
+        };
+
+        if (!isMe && isOnline) {
+            row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        }
+        row.addMouseListener(selectRowAdapter);
 
         // Left: Avatar initial + Status dot + Name + Score
         JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         left.setOpaque(false);
+        left.addMouseListener(selectRowAdapter);
 
         // Dot with status glow
         JPanel dot = new JPanel() {
@@ -982,14 +991,17 @@ public class HomeScreen extends JPanel {
         JPanel nameCol = new JPanel();
         nameCol.setLayout(new BoxLayout(nameCol, BoxLayout.Y_AXIS));
         nameCol.setOpaque(false);
+        nameCol.addMouseListener(selectRowAdapter);
 
         JLabel nameLbl = new JLabel(name);
         nameLbl.setFont(new Font(Theme.BODY_FONT.getFamily(), Font.BOLD, 12));
         nameLbl.setForeground(isMe ? Theme.ACCENT_CYAN : Theme.TEXT_PRIMARY);
+        nameLbl.addMouseListener(selectRowAdapter);
 
         JLabel scLbl = new JLabel(pScore + " điểm");
         scLbl.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.PLAIN, 10));
         scLbl.setForeground(Theme.WARNING);
+        scLbl.addMouseListener(selectRowAdapter);
 
         nameCol.add(nameLbl);
         nameCol.add(scLbl);
@@ -998,32 +1010,45 @@ public class HomeScreen extends JPanel {
         left.add(nameCol);
         row.add(left, BorderLayout.CENTER);
 
-        // Right Action: Challenge button or Status tag
+        // Right Action: Status label or Challenge button
+        JPanel rightBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 2));
+        rightBox.setOpaque(false);
+
         if (isMe) {
-            JLabel youTag = new JLabel("BẠN", SwingConstants.CENTER);
-            youTag.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 9));
+            JLabel youTag = new JLabel("Bạn");
+            youTag.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 11));
             youTag.setForeground(Theme.ACCENT_CYAN);
-            youTag.setPreferredSize(new Dimension(36, 22));
-            row.add(youTag, BorderLayout.EAST);
+            rightBox.add(youTag);
         } else if (isOnline) {
-            JButton chBtn = createPrimarySmallButton("ĐẤU");
-            chBtn.setToolTipText("Thách đấu " + name);
-            chBtn.setPreferredSize(new Dimension(54, 26));
-            chBtn.addActionListener(new ActionListener() {
-                @Override
-                public void actionPerformed(ActionEvent e) {
-                    callback.send("CHALLENGE|" + name);
-                    showNotification("Đã gửi lời thách đấu tới " + name + "!");
-                }
-            });
-            row.add(chBtn, BorderLayout.EAST);
+            if (name.equals(selectedPlayerToChallenge)) {
+                JButton chBtn = createPrimarySmallButton("Thách đấu");
+                chBtn.setToolTipText("Gửi lời thách đấu tới " + name);
+                chBtn.setPreferredSize(new Dimension(86, 26));
+                chBtn.addActionListener(new ActionListener() {
+                    @Override
+                    public void actionPerformed(ActionEvent e) {
+                        callback.send("CHALLENGE|" + name);
+                        showNotification("Đã gửi lời thách đấu tới " + name + "!");
+                        selectedPlayerToChallenge = null;
+                        refreshOnlineList();
+                    }
+                });
+                rightBox.add(chBtn);
+            } else {
+                JLabel onlineTag = new JLabel("Online");
+                onlineTag.setFont(new Font(Theme.BODY_FONT.getFamily(), Font.BOLD, 12));
+                onlineTag.setForeground(Theme.SUCCESS);
+                onlineTag.addMouseListener(selectRowAdapter);
+                rightBox.add(onlineTag);
+            }
         } else {
-            JLabel inBattleTag = new JLabel("ĐANG ĐẤU");
-            inBattleTag.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 9));
+            JLabel inBattleTag = new JLabel("Trong trận");
+            inBattleTag.setFont(new Font(Theme.BODY_FONT.getFamily(), Font.BOLD, 12));
             inBattleTag.setForeground(Theme.WARNING);
-            row.add(inBattleTag, BorderLayout.EAST);
+            rightBox.add(inBattleTag);
         }
 
+        row.add(rightBox, BorderLayout.EAST);
         return row;
     }
 
@@ -1243,13 +1268,13 @@ public class HomeScreen extends JPanel {
         if (rank == 1) { rankStr = "TOP 1"; rankColor = Theme.WARNING; }
         else if (rank == 2) { rankStr = "TOP 2"; rankColor = new Color(0xC0, 0xC8, 0xD8); }
         else if (rank == 3) { rankStr = "TOP 3"; rankColor = new Color(0xCD, 0x7F, 0x32); }
-        else { rankStr = "#" + rank; rankColor = Theme.TEXT_SECONDARY; }
+        else { rankStr = String.valueOf(rank); rankColor = Theme.TEXT_SECONDARY; }
 
         JLabel rLbl = new JLabel(rankStr, SwingConstants.CENTER);
         rLbl.setFont(new Font(Theme.BODY_FONT.getFamily(), Font.BOLD, 13));
         rLbl.setForeground(rankColor);
 
-        JLabel nameLbl = new JLabel(isMe ? pName + " (BẠN)" : pName, SwingConstants.CENTER);
+        JLabel nameLbl = new JLabel(pName, SwingConstants.CENTER);
         nameLbl.setFont(new Font(Theme.BODY_FONT.getFamily(), isMe ? Font.BOLD : Font.PLAIN, 13));
         nameLbl.setForeground(isMe ? Theme.ACCENT_CYAN : Theme.TEXT_PRIMARY);
 
@@ -1644,6 +1669,7 @@ public class HomeScreen extends JPanel {
         btn.setContentAreaFilled(false);
         btn.setOpaque(false);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setBorder(new EmptyBorder(2, 6, 2, 6));
         return btn;
     }
 
@@ -1670,6 +1696,7 @@ public class HomeScreen extends JPanel {
         btn.setContentAreaFilled(false);
         btn.setOpaque(false);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setBorder(new EmptyBorder(2, 6, 2, 6));
         return btn;
     }
 
@@ -1693,6 +1720,7 @@ public class HomeScreen extends JPanel {
         btn.setContentAreaFilled(false);
         btn.setOpaque(false);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setBorder(new EmptyBorder(2, 6, 2, 6));
         return btn;
     }
 
@@ -1716,6 +1744,7 @@ public class HomeScreen extends JPanel {
         btn.setContentAreaFilled(false);
         btn.setOpaque(false);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setBorder(new EmptyBorder(2, 6, 2, 6));
         return btn;
     }
 
@@ -1739,6 +1768,7 @@ public class HomeScreen extends JPanel {
         btn.setContentAreaFilled(false);
         btn.setOpaque(false);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        btn.setBorder(new EmptyBorder(2, 6, 2, 6));
         return btn;
     }
 
@@ -1902,10 +1932,17 @@ public class HomeScreen extends JPanel {
     // ================================================================
 
     public void setProfile(int score, int wins, int losses, int draws) {
+        setProfile(score, wins, losses, draws, this.myRank);
+    }
+
+    public void setProfile(int score, int wins, int losses, int draws, int rank) {
         this.score = score;
         this.wins = wins;
         this.losses = losses;
         this.draws = draws;
+        if (rank > 0) {
+            this.myRank = rank;
+        }
         int total = wins + losses + draws;
         int winRate = total > 0 ? (wins * 100 / total) : 0;
 
@@ -1917,9 +1954,7 @@ public class HomeScreen extends JPanel {
         statTotalVal.setText(String.valueOf(total));
         winRateLabel.setText("TỈ LỆ THẮNG: " + winRate + "%");
 
-        String rank = getRank(score);
-        rankBadgeLabel.setText("HẠNG: " + rank);
-        playerLevelLabel.setText("CẤP ĐỘ " + Math.max(1, score / 50 + 1));
+        rankBadgeLabel.setText(myRank > 0 ? "Top " + myRank : "Top 1");
     }
 
     public void setAvatarBase64(String base64) {
@@ -1941,7 +1976,7 @@ public class HomeScreen extends JPanel {
             for (String entry : data.split(";")) {
                 String[] parts = entry.split("~");
                 if (parts.length >= 3) {
-                    if (parts[0].equals(username)) continue;
+                    if (parts[0].equals(username) || "admin".equalsIgnoreCase(parts[0])) continue;
                     onlinePlayers.add(parts);
                 }
             }
@@ -1950,7 +1985,7 @@ public class HomeScreen extends JPanel {
     }
 
     public void addOnlinePlayer(String name, int pScore) {
-        if (name.equals(username)) return;
+        if (name.equals(username) || "admin".equalsIgnoreCase(name)) return;
         for (String[] p : onlinePlayers) {
             if (p[0].equals(name)) return;
         }
@@ -1994,9 +2029,17 @@ public class HomeScreen extends JPanel {
             for (String entry : data.split(";")) {
                 String[] parts = entry.split("~");
                 if (parts.length >= 5) {
+                    if ("admin".equalsIgnoreCase(parts[0])) continue;
                     try {
+                        int curRank = rank++;
+                        if (parts[0].equalsIgnoreCase(username)) {
+                            this.myRank = curRank;
+                            if (rankBadgeLabel != null) {
+                                rankBadgeLabel.setText("Top " + this.myRank);
+                            }
+                        }
                         leaderboardRowsContainer.add(createLeaderboardTableRow(
-                                rank++, parts[0],
+                                curRank, parts[0],
                                 Integer.parseInt(parts[1]),
                                 Integer.parseInt(parts[2]),
                                 Integer.parseInt(parts[3]),

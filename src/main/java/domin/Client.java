@@ -318,11 +318,13 @@ public class Client {
             case "PROFILE": {
                 if (homeScreen != null && p.length >= 5) {
                     try {
+                        int rank = (p.length >= 7) ? Integer.parseInt(p[6]) : 0;
                         homeScreen.setProfile(
                             Integer.parseInt(p[1]),
                             Integer.parseInt(p[2]),
                             Integer.parseInt(p[3]),
-                            Integer.parseInt(p[4])
+                            Integer.parseInt(p[4]),
+                            rank
                         );
                         if (p.length >= 6 && !p[5].isEmpty()) {
                             homeScreen.setAvatarBase64(p[5]);

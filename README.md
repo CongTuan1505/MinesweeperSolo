@@ -107,11 +107,12 @@ javac -encoding UTF-8 -d out $(find src/main/java -name "*.java")
 
 # Kiểm thử logic trọng tài (không cần Server/Socket)
 javac -encoding UTF-8 -cp out -d out tests/TestGameRoom.java
-java -cp out server.TestGameRoom
+java -cp out domin.TestGameRoom
 
-# Kiểm thử qua socket thật (cần chạy Server ở một terminal khác trước: ./run-server.sh)
+# Kiểm thử qua socket thật: chạy domin.Server trên cổng thử riêng 5557,
+# dùng database thử riêng vì bài test có tạo/xóa tài khoản và lưu trận.
 javac -encoding UTF-8 -d out tests/TestE2E.java
-java -cp out TestE2E
+java -cp out TestE2E 5557
 ```
 `TestGameRoom` sẽ in lỗi "Không lưu được kết quả trận vào database" — đây là bình thường vì
 test không kết nối MySQL thật, chỉ kiểm tra logic game.

@@ -476,6 +476,12 @@ public class Server {
         }
     }
 
+    private boolean requireAdmin(Peer peer) {
+        if (peer.name != null && peer.isAdmin) return true;
+        peer.send("ERROR|Không có quyền quản trị");
+        return false;
+    }
+
     private void handle(Peer peer, String line) {
         if (line.isEmpty()) return;
         String[] p = Wire.parse(line);
@@ -645,10 +651,12 @@ public class Server {
                     break;
                 }
                 case "ADMIN_GET_MATCHES": {
+                    if (!requireAdmin(peer)) break;
                     peer.send(buildAdminMatchListMessage());
                     break;
                 }
                 case "ADMIN_GET_STATS": {
+                    if (!requireAdmin(peer)) break;
                     int onlineCount = activePeers.size();
                     int matchesCount = activeMatches.size();
                     int totalUsers = DB.getTotalUsers();
@@ -657,11 +665,13 @@ public class Server {
                     break;
                 }
                 case "ADMIN_GET_USERS": {
+                    if (!requireAdmin(peer)) break;
                     String users = DB.getAllUsersForAdmin(50);
                     peer.send("ADMIN_USER_LIST|" + users);
                     break;
                 }
                 case "ADMIN_RESET_PASSWORD": {
+                    if (!requireAdmin(peer)) break;
                     if (peer.isAdmin && p.length >= 3) {
                         String targetUser = p[1];
                         String newPass = p[2];
@@ -672,6 +682,7 @@ public class Server {
                     break;
                 }
                 case "ADMIN_DELETE_USER": {
+                    if (!requireAdmin(peer)) break;
                     if (peer.isAdmin && p.length >= 2) {
                         String targetUser = p[1];
                         boolean ok = DB.adminDeleteUser(targetUser);
@@ -681,6 +692,7 @@ public class Server {
                     break;
                 }
                 case "ADMIN_RESET_SCORE": {
+                    if (!requireAdmin(peer)) break;
                     if (peer.isAdmin && p.length >= 2) {
                         String targetUser = p[1];
                         boolean ok = DB.adminResetScore(targetUser);
@@ -690,6 +702,7 @@ public class Server {
                     break;
                 }
                 case "ADMIN_SET_ROLE": {
+                    if (!requireAdmin(peer)) break;
                     if (peer.isAdmin && p.length >= 3) {
                         String targetUser = p[1];
                         String role = p[2];
@@ -700,11 +713,13 @@ public class Server {
                     break;
                 }
                 case "ADMIN_GET_HISTORY": {
+                    if (!requireAdmin(peer)) break;
                     String history = DB.getAllMatchesForAdmin(50);
                     peer.send("ADMIN_HISTORY_LIST|" + history);
                     break;
                 }
                 case "SPECTATE_START": {
+                    if (!requireAdmin(peer)) break;
                     String targetId = p.length > 1 ? p[1] : "";
                     Match targetMatch = null;
                     if (activeMatches.containsKey(targetId)) {

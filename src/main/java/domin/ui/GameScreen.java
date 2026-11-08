@@ -84,7 +84,7 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         JPanel centerBox = new JPanel();
         centerBox.setLayout(new BoxLayout(centerBox, BoxLayout.Y_AXIS));
         centerBox.setOpaque(false);
-        JLabel matchMode = new JLabel("CHIẾN TRƯỜNG 1v1  •  9×9");
+        JLabel matchMode = new JLabel("CHIẾN TRƯỜNG 1v1  •  " + rows + "×" + cols + "  •  " + mines + " MÌN");
         matchMode.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 9));
         matchMode.setForeground(new Color(0x64, 0x74, 0x8B));
         matchMode.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -219,10 +219,23 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         bottomHUD.add(Box.createVerticalStrut(8));
         bottomHUD.add(notifyLabel);
         bottomHUD.add(Box.createVerticalStrut(8));
-        bottomHUD.add(surrenderBtn);
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 0));
+        controls.setOpaque(false);
+        controls.add(new SoundToggleButton());
+        controls.add(surrenderBtn);
+        bottomHUD.add(controls);
 
         add(topHUD, BorderLayout.NORTH);
-        add(boardWrap, BorderLayout.CENTER);
+        JScrollPane boardScroll = new JScrollPane(boardWrap);
+        boardScroll.setBorder(BorderFactory.createEmptyBorder());
+        boardScroll.setOpaque(false);
+        boardScroll.getViewport().setOpaque(false);
+        boardScroll.getHorizontalScrollBar().setUnitIncrement(CellLabel.CELL_SIZE);
+        boardScroll.getVerticalScrollBar().setUnitIncrement(CellLabel.CELL_SIZE);
+        boardScroll.setPreferredSize(new Dimension(
+                Math.min(1000, cols * (CellLabel.CELL_SIZE + 2) + 36),
+                Math.min(580, rows * (CellLabel.CELL_SIZE + 2) + 36)));
+        add(boardScroll, BorderLayout.CENTER);
         add(bottomHUD, BorderLayout.SOUTH);
     }
 

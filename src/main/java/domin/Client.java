@@ -6,6 +6,7 @@ import domin.ui.GameScreen;
 import domin.ui.HomeScreen;
 import domin.ui.LoginScreen;
 import domin.ui.ResultDialog;
+import domin.ui.UiSounds;
 
 import java.awt.BorderLayout;
 import java.awt.event.WindowAdapter;
@@ -34,8 +35,11 @@ public class Client {
     private final int port;
     private String name;
     private String currentOpponent;
+    private int matchTimeLimit;
+    private int lastWarningSecond = -1;
     private boolean isLoggingOut = false;
     private boolean isAdmin = false;
+    private String adminScopeId = "ALL";
 
     // Các màn hình hiện tại
     private LoginScreen loginScreen;
@@ -51,6 +55,7 @@ public class Client {
         socket.connect(new InetSocketAddress(host, port), 5000);
         wire = new Wire(socket);
 
+        UiSounds.install();
         frame = new JFrame("Minesweeper Battle - Đăng nhập");
         frame.setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
         frame.addWindowListener(new WindowAdapter() {
@@ -72,6 +77,7 @@ public class Client {
         frame.setLocationRelativeTo(null);
         frame.getContentPane().setBackground(new java.awt.Color(10, 15, 30));
         frame.setVisible(true);
+        SoundEffects.shared().startMusic();
 
         startReaderThread();
     }
@@ -107,12 +113,14 @@ public class Client {
     // ====================================================================
 
     private void showLogin() {
+        SoundEffects.shared().stop();
         homeScreen = null;
         gameScreen = null;
         adminScreen = null;
         spectatorScreen = null;
         name = null;
         isAdmin = false;
+        adminScopeId = "ALL";
         isLoggingOut = false;
         loginScreen = new LoginScreen(new LoginScreen.SendCallback() {
             @Override
@@ -174,6 +182,7 @@ public class Client {
             }
             @Override
             public void onSpectate(String matchId, String p1, String p2) {
+                adminScopeId = adminScreen.getScopeId();
                 wire.send("SPECTATE_START|" + matchId);
             }
             @Override
@@ -187,6 +196,7 @@ public class Client {
                 wire.send("LOGOUT");
             }
         });
+        adminScreen.selectScope(adminScopeId);
         switchScreen(adminScreen);
         frame.setTitle("Minesweeper Battle - ADMIN Panel (" + name + ")");
         frame.setSize(1400, 860);
@@ -234,6 +244,8 @@ public class Client {
     private void showGame(String oppName, int rows, int cols, int mines, int timeLimit) {
         if (adminScreen != null) adminScreen.stopTimer();
         this.currentOpponent = oppName;
+        this.matchTimeLimit = timeLimit;
+        this.lastWarningSecond = -1;
         gameScreen = new GameScreen(name, oppName, rows, cols, mines, timeLimit,
                 new GameScreen.GameCallback() {
                     @Override
@@ -249,7 +261,11 @@ public class Client {
         switchScreen(gameScreen);
         frame.setTitle("Dò mìn đối kháng - " + name + " vs " + oppName);
         frame.pack();
-        frame.setResizable(false);
+        java.awt.Rectangle bounds = frame.getGraphicsConfiguration().getBounds();
+        java.awt.Insets insets = java.awt.Toolkit.getDefaultToolkit().getScreenInsets(frame.getGraphicsConfiguration());
+        frame.setSize(Math.min(frame.getWidth(), bounds.width - insets.left - insets.right),
+                Math.min(frame.getHeight(), bounds.height - insets.top - insets.bottom));
+        frame.setResizable(true);
         frame.setLocationRelativeTo(null);
     }
 
@@ -293,6 +309,9 @@ public class Client {
                 } else if (homeScreen != null) {
                     homeScreen.setStatus(msg);
                     homeScreen.resetButtons();
+                } else if (adminScreen != null || spectatorScreen != null) {
+                    JOptionPane.showMessageDialog(frame, msg, "Quản trị",
+                            JOptionPane.ERROR_MESSAGE);
                 }
                 break;
             }
@@ -318,6 +337,7 @@ public class Client {
             case "PROFILE": {
                 if (homeScreen != null && p.length >= 5) {
                     try {
+                        if (p.length >= 8 && !p[7].equals(homeScreen.getProfileBoardId())) break;
                         int rank = (p.length >= 7) ? Integer.parseInt(p[6]) : 0;
                         homeScreen.setProfile(
                             Integer.parseInt(p[1]),
@@ -360,7 +380,7 @@ public class Client {
                 break;
             }
             case "LEADERBOARD": {
-                if (homeScreen != null) {
+                if (homeScreen != null && (p.length < 3 || p[2].equals(homeScreen.getLeaderboardBoardId()))) {
                     homeScreen.setLeaderboard(p.length > 1 ? p[1] : "");
                 }
                 break;
@@ -374,7 +394,8 @@ public class Client {
             case "CHALLENGE_RECEIVED": {
                 if (homeScreen != null && p.length >= 3) {
                     try {
-                        homeScreen.addChallenge(p[1], Integer.parseInt(p[2]));
+                        SoundEffects.shared().play(SoundEffects.Cue.CHALLENGE);
+                        homeScreen.addChallenge(p[1], Integer.parseInt(p[2]), p.length > 3 ? p[3] : "9x9");
                         homeScreen.showNotification("Nhận được lời mời thách đấu từ " + p[1] + "!");
                     } catch (NumberFormatException ignored) {}
                 }
@@ -386,10 +407,13 @@ public class Client {
                 // MATCH_START|tên đối thủ|số hàng|số cột|số mìn|giới hạn giây
                 showGame(p[1], Integer.parseInt(p[2]), Integer.parseInt(p[3]),
                         Integer.parseInt(p[4]), Integer.parseInt(p[5]));
+                SoundEffects.shared().play(SoundEffects.Cue.START);
                 break;
             }
             case "CELLS": {
                 if (gameScreen == null) break;
+                if (p.length < 2 || p[1].isEmpty() || gameScreen.isOver()) break;
+                SoundEffects.shared().play(p[1].contains(";") ? SoundEffects.Cue.REGION : SoundEffects.Cue.OPEN);
                 for (String item : p[1].split(";")) {
                     String[] v = item.split(",");
                     gameScreen.showOpened(Integer.parseInt(v[0]), Integer.parseInt(v[1]),
@@ -399,8 +423,9 @@ public class Client {
             }
             case "FLAG": {
                 if (gameScreen != null) {
-                    gameScreen.showFlag(Integer.parseInt(p[1]), Integer.parseInt(p[2]),
-                            Integer.parseInt(p[3]));
+                    int state = Integer.parseInt(p[3]);
+                    gameScreen.showFlag(Integer.parseInt(p[1]), Integer.parseInt(p[2]), state);
+                    if (!gameScreen.isOver()) SoundEffects.shared().play(state == 1 ? SoundEffects.Cue.FLAG : SoundEffects.Cue.UNFLAG);
                 }
                 break;
             }
@@ -417,11 +442,21 @@ public class Client {
                     gameScreen.setNotify(p[1]);
                 } else if (homeScreen != null) {
                     homeScreen.showNotification(p[1]);
+                } else if (adminScreen != null) {
+                    JOptionPane.showMessageDialog(frame, p[1], "Quản trị", JOptionPane.INFORMATION_MESSAGE);
                 }
                 break;
             }
             case "TIME": {
-                if (gameScreen != null) gameScreen.updateTimer(Integer.parseInt(p[1]));
+                if (gameScreen != null) {
+                    int elapsed = Integer.parseInt(p[1]);
+                    gameScreen.updateTimer(elapsed);
+                    int remaining = matchTimeLimit - elapsed;
+                    if (!gameScreen.isOver() && remaining > 0 && remaining <= 10 && elapsed > lastWarningSecond) {
+                        lastWarningSecond = elapsed;
+                        SoundEffects.shared().play(SoundEffects.Cue.WARNING);
+                    }
+                }
                 break;
             }
             case "MINES": {
@@ -440,7 +475,7 @@ public class Client {
 
             // ---- Admin & Spectator Protocols ----
             case "ADMIN_STATS": {
-                if (adminScreen != null && p.length >= 5) {
+                if (adminScreen != null && p.length >= 5 && adminScreen.acceptsScope(Wire.field(p, 5))) {
                     try {
                         adminScreen.setStats(
                                 Integer.parseInt(p[1]),
@@ -453,19 +488,19 @@ public class Client {
                 break;
             }
             case "ADMIN_MATCH_LIST": {
-                if (adminScreen != null) {
+                if (adminScreen != null && adminScreen.acceptsScope(Wire.field(p, 2))) {
                     adminScreen.setMatches(p.length > 1 ? p[1] : "");
                 }
                 break;
             }
             case "ADMIN_USER_LIST": {
-                if (adminScreen != null) {
+                if (adminScreen != null && adminScreen.acceptsScope(Wire.field(p, 2))) {
                     adminScreen.setUsers(p.length > 1 ? p[1] : "");
                 }
                 break;
             }
             case "ADMIN_HISTORY_LIST": {
-                if (adminScreen != null) {
+                if (adminScreen != null && adminScreen.acceptsScope(Wire.field(p, 2))) {
                     adminScreen.setHistory(p.length > 1 ? p[1] : "");
                 }
                 break;
@@ -566,10 +601,14 @@ public class Client {
     // ====================================================================
 
     private void onGameOver(String[] p) {
-        if (gameScreen == null) return;
+        if (gameScreen == null || gameScreen.isOver()) return;
         gameScreen.setGameOver();
         String result = p[1];
         String reason = p[2];
+        SoundEffects.Cue resultCue = "WIN".equals(result) ? SoundEffects.Cue.WIN :
+                "DRAW".equals(result) ? SoundEffects.Cue.DRAW :
+                "MINE".equals(reason) ? SoundEffects.Cue.MINE_LOSS : SoundEffects.Cue.LOSE;
+        SoundEffects.shared().play(resultCue);
         int seconds = Integer.parseInt(p[3]);
         int mySafeOpened = Integer.parseInt(p[4]);
         int oppSafeOpened = Integer.parseInt(p[5]);
@@ -633,6 +672,7 @@ public class Client {
     }
 
     private void onDisconnected() {
+        SoundEffects.shared().stop();
         if (isLoggingOut) {
             isLoggingOut = false;
             reconnect();

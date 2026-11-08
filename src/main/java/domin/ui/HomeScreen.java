@@ -1,5 +1,8 @@
 package domin.ui;
 
+import domin.BoardType;
+import javax.swing.JComboBox;
+
 import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
@@ -131,6 +134,9 @@ public class HomeScreen extends JPanel {
     // UI References — Center Stage
     private JPanel challengeBannerContainer;
     private JButton findMatchBtn;
+    private JComboBox<BoardType> matchBoardSelector;
+    private JComboBox<BoardType> profileBoardSelector;
+    private JComboBox<BoardType> leaderboardBoardSelector;
     private JButton cancelMatchBtn;
     private JPanel matchmakingStatusArea;
     private JLabel matchmakingStatusLabel;
@@ -445,6 +451,7 @@ public class HomeScreen extends JPanel {
             }
         });
         right.add(adminNavButton);
+        right.add(new SoundToggleButton());
         right.add(userChip);
 
         nav.add(left, BorderLayout.WEST);
@@ -553,6 +560,16 @@ public class HomeScreen extends JPanel {
     //  LEFT AREA: PLAYER IDENTITY (Seamless Gaming Card)
     // ================================================================
 
+    private JComboBox<BoardType> createBoardSelector() {
+        return new BoardSelector();
+    }
+    public String getProfileBoardId() {
+        return ((BoardType) profileBoardSelector.getSelectedItem()).id;
+    }
+    public String getLeaderboardBoardId() {
+        return ((BoardType) leaderboardBoardSelector.getSelectedItem()).id;
+    }
+
     private JPanel buildLeftPlayerArea() {
         JPanel leftPanel = new JPanel() {
             @Override
@@ -646,6 +663,12 @@ public class HomeScreen extends JPanel {
         rankBadgeLabel.setForeground(Theme.ACCENT_CYAN);
         rankBadgeLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         leftPanel.add(rankBadgeLabel);
+        leftPanel.add(Box.createVerticalStrut(10));
+
+        profileBoardSelector = createBoardSelector();
+        profileBoardSelector.setMaximumSize(new Dimension(224, 48));
+        profileBoardSelector.addActionListener(e -> callback.send("GET_PROFILE|" + getProfileBoardId()));
+        leftPanel.add(profileBoardSelector);
         leftPanel.add(Box.createVerticalStrut(10));
 
         // Score display
@@ -789,6 +812,12 @@ public class HomeScreen extends JPanel {
         stage.add(arenaTitle);
         stage.add(Box.createVerticalStrut(26));
 
+        matchBoardSelector = createBoardSelector();
+        matchBoardSelector.setMaximumSize(new Dimension(320, 52));
+        matchBoardSelector.setPreferredSize(new Dimension(320, 52));
+        stage.add(matchBoardSelector);
+        stage.add(Box.createVerticalStrut(12));
+
         // 4. THE MASSIVE "TÌM TRẬN ĐẤU" BUTTON (No emojis)
         findMatchBtn = createMassivePlayButton("TÌM TRẬN ĐẤU", "GHÉP ĐỐI THỦ NGẪU NHIÊN");
         findMatchBtn.setPreferredSize(new Dimension(320, 64));
@@ -797,7 +826,7 @@ public class HomeScreen extends JPanel {
         findMatchBtn.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                callback.send("FIND_MATCH");
+                callback.send("FIND_MATCH|" + ((BoardType) matchBoardSelector.getSelectedItem()).id);
                 setFindingMatch(true);
             }
         });
@@ -839,13 +868,6 @@ public class HomeScreen extends JPanel {
 
         stage.add(matchmakingStatusArea);
         stage.add(Box.createVerticalStrut(18));
-
-        // 7. Queue Info pill
-        JLabel queueInfo = new JLabel("● Hàng chờ trung bình: ~8s  •  Hệ thống ghép trận công bằng");
-        queueInfo.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.PLAIN, 10));
-        queueInfo.setForeground(Theme.TEXT_MUTED);
-        queueInfo.setAlignmentX(Component.CENTER_ALIGNMENT);
-        stage.add(queueInfo);
 
         stage.add(Box.createVerticalGlue());
         return stage;
@@ -1027,8 +1049,10 @@ public class HomeScreen extends JPanel {
                 chBtn.addActionListener(new ActionListener() {
                     @Override
                     public void actionPerformed(ActionEvent e) {
-                        callback.send("CHALLENGE|" + name);
-                        showNotification("Đã gửi lời thách đấu tới " + name + "!");
+                        BoardType type = BoardSelector.chooseBoard(HomeScreen.this, name,
+                                (BoardType) matchBoardSelector.getSelectedItem());
+                        if (type == null) return;
+                        callback.send("CHALLENGE|" + name + "|" + type.id);
                         selectedPlayerToChallenge = null;
                         refreshOnlineList();
                     }
@@ -1063,6 +1087,7 @@ public class HomeScreen extends JPanel {
             String[] top = challengeList.get(0);
             final String challengerName = top[0];
             String challengerScore = top[1];
+            String challengeBoard = top[2];
 
             JPanel prompt = new JPanel(new BorderLayout(14, 0)) {
                 @Override
@@ -1102,7 +1127,7 @@ public class HomeScreen extends JPanel {
             titleLbl.setFont(new Font(Theme.BODY_FONT.getFamily(), Font.BOLD, 13));
             titleLbl.setForeground(Theme.TEXT_PRIMARY);
 
-            JLabel subLbl = new JLabel("Điểm xếp hạng: " + challengerScore + "  •  Bạn có chấp nhận trận đấu không?");
+            JLabel subLbl = new JLabel("Bàn " + challengeBoard + " • Điểm: " + challengerScore + " • Chấp nhận?");
             subLbl.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.PLAIN, 10));
             subLbl.setForeground(Theme.TEXT_SECONDARY);
 
@@ -1122,7 +1147,7 @@ public class HomeScreen extends JPanel {
             acceptBtn.addActionListener(new ActionListener() {
                 @Override
                 public void actionPerformed(ActionEvent e) {
-                    callback.send("CHALLENGE_ACCEPT|" + challengerName);
+                    callback.send("CHALLENGE_ACCEPT|" + challengerName + "|" + challengeBoard);
                     removeChallenge(challengerName);
                 }
             });
@@ -1177,17 +1202,18 @@ public class HomeScreen extends JPanel {
         titleBlock.add(title);
         titleBlock.add(Box.createVerticalStrut(4));
         titleBlock.add(sub);
+        title.setAlignmentX(Component.LEFT_ALIGNMENT);
+        sub.setAlignmentX(Component.LEFT_ALIGNMENT);
         top.add(titleBlock, BorderLayout.WEST);
 
-        JButton backBtn = createOutlineButton("QUAY LẠI SẢNH");
-        backBtn.setPreferredSize(new Dimension(150, 36));
-        backBtn.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                switchTab(TAB_LOBBY);
-            }
-        });
-        top.add(backBtn, BorderLayout.EAST);
+        leaderboardBoardSelector = createBoardSelector();
+        leaderboardBoardSelector.setPreferredSize(new Dimension(224, 48));
+        leaderboardBoardSelector.addActionListener(e -> callback.send("GET_LEADERBOARD|" + getLeaderboardBoardId()));
+        JPanel boardPickerArea = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        boardPickerArea.setOpaque(false);
+        boardPickerArea.add(leaderboardBoardSelector);
+        top.add(boardPickerArea, BorderLayout.EAST);
+
         panel.add(top, BorderLayout.NORTH);
 
         // Table Container
@@ -1334,15 +1360,6 @@ public class HomeScreen extends JPanel {
         titleBlock.add(historySummaryLabel);
         top.add(titleBlock, BorderLayout.WEST);
 
-        JButton backBtn = createOutlineButton("QUAY LẠI SẢNH");
-        backBtn.setPreferredSize(new Dimension(150, 36));
-        backBtn.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                switchTab(TAB_LOBBY);
-            }
-        });
-        top.add(backBtn, BorderLayout.EAST);
         panel.add(top, BorderLayout.NORTH);
 
         // History Container
@@ -1362,7 +1379,7 @@ public class HomeScreen extends JPanel {
         return panel;
     }
 
-    private JPanel createHistoryMatchCard(String opp, String res, int pts, int duration, String date) {
+    private JPanel createHistoryMatchCard(String opp, String res, int pts, int duration, String date, String boardId) {
         final String resultKey = res;
 
         JPanel card = new JPanel(new BorderLayout(14, 0)) {
@@ -1418,6 +1435,10 @@ public class HomeScreen extends JPanel {
         vsLbl.setFont(new Font(Theme.BODY_FONT.getFamily(), Font.BOLD, 14));
         vsLbl.setForeground(Theme.TEXT_PRIMARY);
 
+        JLabel modeLabel = new JLabel("Chế độ: " + BoardType.fromId(boardId).displayName());
+        modeLabel.setFont(Theme.BODY_FONT.deriveFont(Font.BOLD, 12f));
+        modeLabel.setForeground(Theme.ACCENT_CYAN);
+        left.add(modeLabel);
         left.add(badgeLbl);
         left.add(vsLbl);
         card.add(left, BorderLayout.CENTER);
@@ -1463,15 +1484,6 @@ public class HomeScreen extends JPanel {
         titleBlock.add(sub);
         top.add(titleBlock, BorderLayout.WEST);
 
-        JButton backBtn = createOutlineButton("QUAY LẠI SẢNH");
-        backBtn.setPreferredSize(new Dimension(150, 36));
-        backBtn.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                switchTab(TAB_LOBBY);
-            }
-        });
-        top.add(backBtn, BorderLayout.EAST);
         panel.add(top, BorderLayout.NORTH);
 
         // 3 Cards Grid (No emojis)
@@ -1479,7 +1491,7 @@ public class HomeScreen extends JPanel {
         cardsGrid.setOpaque(false);
 
         cardsGrid.add(createRuleCard("MỤC TIÊU TRẬN ĐẤU",
-                "• Hai người chơi cùng thi đấu trên một bàn mìn 9×9 với 10 quả mìn.\n\n" +
+                "• Chọn bàn 9×9 (10 mìn), 16×16 (40 mìn) hoặc 16×30 (99 mìn). Thành tích từng loại bàn độc lập.\n\n" +
                 "• Ai hoàn thành mở hết 71 ô an toàn trước sẽ giành chiến thắng.\n\n" +
                 "• Tiến trình mở ô và cắm cờ được đồng bộ theo thời gian thực."));
 
@@ -1593,7 +1605,7 @@ public class HomeScreen extends JPanel {
 
         // Request updated data when switching to tabs
         if (TAB_LEADERBOARD.equals(tabName)) {
-            callback.send("GET_LEADERBOARD");
+            callback.send("GET_LEADERBOARD|" + getLeaderboardBoardId());
         } else if (TAB_HISTORY.equals(tabName)) {
             callback.send("GET_HISTORY");
         }
@@ -1841,6 +1853,7 @@ public class HomeScreen extends JPanel {
         searchDots = 0;
         searchSeconds = 0;
 
+        matchBoardSelector.setEnabled(false);
         findMatchBtn.setVisible(false);
         cancelMatchBtn.setVisible(true);
 
@@ -1877,6 +1890,7 @@ public class HomeScreen extends JPanel {
             searchTimer.stop();
             searchTimer = null;
         }
+        matchBoardSelector.setEnabled(true);
         findMatchBtn.setVisible(true);
         cancelMatchBtn.setVisible(false);
         matchmakingStatusLabel.setText("");
@@ -2032,18 +2046,12 @@ public class HomeScreen extends JPanel {
                     if ("admin".equalsIgnoreCase(parts[0])) continue;
                     try {
                         int curRank = rank++;
-                        if (parts[0].equalsIgnoreCase(username)) {
-                            this.myRank = curRank;
-                            if (rankBadgeLabel != null) {
-                                rankBadgeLabel.setText("Top " + this.myRank);
-                            }
-                        }
                         leaderboardRowsContainer.add(createLeaderboardTableRow(
                                 curRank, parts[0],
                                 Integer.parseInt(parts[1]),
                                 Integer.parseInt(parts[2]),
                                 Integer.parseInt(parts[3]),
-                                parts.length > 5 ? Integer.parseInt(parts[4]) : 0
+                                Integer.parseInt(parts[4])
                         ));
                         leaderboardRowsContainer.add(Box.createVerticalStrut(6));
                     } catch (NumberFormatException ignored) {}
@@ -2068,11 +2076,22 @@ public class HomeScreen extends JPanel {
                 String[] parts = entry.split("~");
                 if (parts.length >= 5) {
                     try {
+                        String date = parts[4].trim();
+                        String boardId = parts.length > 5 ? parts[5].trim() : "";
+                        // Older servers append the board to the date instead of a separate field.
+                        for (BoardType type : BoardType.values()) {
+                            String suffix = "· " + type.id;
+                            if (date.endsWith(suffix)) {
+                                if (boardId.isEmpty()) boardId = type.id;
+                                date = date.substring(0, date.length() - suffix.length()).trim();
+                                break;
+                            }
+                        }
                         historyRowsContainer.add(createHistoryMatchCard(
                                 parts[0], parts[1],
                                 Integer.parseInt(parts[2]),
                                 Integer.parseInt(parts[3]),
-                                parts[4]
+                                date, boardId
                         ));
                         historyRowsContainer.add(Box.createVerticalStrut(8));
                     } catch (NumberFormatException ignored) {}
@@ -2083,11 +2102,15 @@ public class HomeScreen extends JPanel {
         historyRowsContainer.repaint();
     }
 
-    public void addChallenge(String fromUser, int challengerScore) {
+    public void addChallenge(String fromUser, int challengerScore) { addChallenge(fromUser, challengerScore, "9x9"); }
+    public void addChallenge(String fromUser, int challengerScore, String boardId) {
         for (String[] c : challengeList) {
-            if (c[0].equals(fromUser)) return;
+            if (c[0].equals(fromUser)) {
+                c[1] = String.valueOf(challengerScore); c[2] = boardId;
+                updateChallengeBanner(); return;
+            }
         }
-        challengeList.add(new String[]{fromUser, String.valueOf(challengerScore)});
+        challengeList.add(new String[]{fromUser, String.valueOf(challengerScore), boardId});
         updateChallengeBanner();
     }
 

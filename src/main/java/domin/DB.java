@@ -175,18 +175,19 @@ public final class DB {
     /**
      * Lấy thông tin người chơi: [score, wins, losses, draws].
      */
-    static int[] getProfile(String username) throws SQLException {
+    static int[] getProfile(String username) throws SQLException { return getProfile(username, BoardType.SMALL); }
+    static int[] getProfile(String username, BoardType type) throws SQLException {
         String sql = "SELECT score, wins, losses, draws FROM users WHERE username = ?";
         try (Connection con = getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+             PreparedStatement ps = con.prepareStatement(statsSql(sql, type))) {
             ps.setString(1, username);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return new int[]{
-                        rs.getInt("score"),
-                        rs.getInt("wins"),
-                        rs.getInt("losses"),
-                        rs.getInt("draws")
+                        rs.getInt("score" + type.statsSuffix),
+                        rs.getInt("wins" + type.statsSuffix),
+                        rs.getInt("losses" + type.statsSuffix),
+                        rs.getInt("draws" + type.statsSuffix)
                     };
                 }
             }
@@ -334,8 +335,9 @@ public final class DB {
         return 0;
     }
 
-    public static int getTotalMatches() {
-        String sql = "SELECT COUNT(*) FROM matches";
+    public static int getTotalMatches() { return getTotalMatches(BoardScope.ALL); }
+    public static int getTotalMatches(BoardScope scope) {
+        String sql = "SELECT COUNT(*) FROM matches" + matchScopeWhere(scope);
         try (Connection con = getConnection();
              PreparedStatement ps = con.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
@@ -344,11 +346,12 @@ public final class DB {
         return 0;
     }
 
-    public static String getAllUsersForAdmin(int limit) {
+    public static String getAllUsersForAdmin(int limit) { return getAllUsersForAdmin(limit, BoardScope.ALL); }
+    public static String getAllUsersForAdmin(int limit, BoardScope scope) {
         ensureRoleColumn();
-        String sql = "SELECT username, role, score, wins, losses, draws, "
-                   + "DATE_FORMAT(created_at, '%Y-%m-%d') as reg_date FROM users "
-                   + "ORDER BY CASE WHEN LOWER(role) = 'admin' THEN 0 ELSE 1 END, score DESC, wins DESC LIMIT ?";
+        String sql = "SELECT username, role, " + adminStatsColumns(scope)
+                   + ", DATE_FORMAT(created_at, '%Y-%m-%d') as reg_date FROM users "
+                   + "ORDER BY CASE WHEN LOWER(role) = 'admin' THEN 0 ELSE 1 END, score DESC, wins DESC, username LIMIT ?";
         StringBuilder sb = new StringBuilder();
         try (Connection con = getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
@@ -392,7 +395,15 @@ public final class DB {
     }
 
     public static boolean adminResetScore(String username) throws SQLException {
-        String sql = "UPDATE users SET score = 0, wins = 0, losses = 0, draws = 0 WHERE username = ?";
+        return adminResetScore(username, BoardScope.ALL);
+    }
+    public static boolean adminResetScore(String username, BoardScope scope) throws SQLException {
+        java.util.List<String> assignments = new java.util.ArrayList<>();
+        for (BoardType type : scope.types()) {
+            for (String col : new String[]{"score", "wins", "losses", "draws"})
+                assignments.add(col + type.statsSuffix + " = 0");
+        }
+        String sql = "UPDATE users SET " + String.join(", ", assignments) + " WHERE username = ?";
         try (Connection con = getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
             ps.setString(1, username);
@@ -410,10 +421,11 @@ public final class DB {
         }
     }
 
-    public static String getAllMatchesForAdmin(int limit) {
-        String sql = "SELECT id, player1, player2, result, reason, duration_sec, "
+    public static String getAllMatchesForAdmin(int limit) { return getAllMatchesForAdmin(limit, BoardScope.ALL); }
+    public static String getAllMatchesForAdmin(int limit, BoardScope scope) {
+        String sql = "SELECT id, player1, player2, result, reason, duration_sec, board_type, "
                    + "DATE_FORMAT(played_at, '%Y-%m-%d %H:%i') as played_time "
-                   + "FROM matches ORDER BY played_at DESC LIMIT ?";
+                   + "FROM matches" + matchScopeWhere(scope) + " ORDER BY played_at DESC, id DESC LIMIT ?";
         StringBuilder sb = new StringBuilder();
         try (Connection con = getConnection();
              PreparedStatement ps = con.prepareStatement(sql)) {
@@ -428,7 +440,8 @@ public final class DB {
                       .append(rs.getString("result")).append('~')
                       .append(rs.getString("reason")).append('~')
                       .append(rs.getInt("duration_sec")).append('~')
-                      .append(rs.getString("played_time") != null ? rs.getString("played_time") : "");
+                      .append(rs.getString("played_time") != null ? rs.getString("played_time") : "")
+                      .append('~').append(rs.getString("board_type"));
                     first = false;
                 }
             }
@@ -449,24 +462,25 @@ public final class DB {
      * Quy tắc sắp xếp: score DESC, wins DESC, losses ASC.
      * Trả về chuỗi: name~score~wins~losses~draws;...
      */
-    static String getLeaderboard(int limit) throws SQLException {
+    static String getLeaderboard(int limit) throws SQLException { return getLeaderboard(limit, BoardType.SMALL); }
+    static String getLeaderboard(int limit, BoardType type) throws SQLException {
         ensureRoleColumn();
         String sql = "SELECT username, score, wins, losses, draws FROM users "
                    + "WHERE (role IS NULL OR UPPER(role) != 'ADMIN') AND LOWER(username) != 'admin' "
                    + "ORDER BY score DESC, wins DESC, losses ASC LIMIT ?";
         StringBuilder sb = new StringBuilder();
         try (Connection con = getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+             PreparedStatement ps = con.prepareStatement(statsSql(sql, type))) {
             ps.setInt(1, limit);
             try (ResultSet rs = ps.executeQuery()) {
                 boolean first = true;
                 while (rs.next()) {
                     if (!first) sb.append(';');
                     sb.append(rs.getString("username")).append('~')
-                      .append(rs.getInt("score")).append('~')
-                      .append(rs.getInt("wins")).append('~')
-                      .append(rs.getInt("losses")).append('~')
-                      .append(rs.getInt("draws"));
+                      .append(rs.getInt("score" + type.statsSuffix)).append('~')
+                      .append(rs.getInt("wins" + type.statsSuffix)).append('~')
+                      .append(rs.getInt("losses" + type.statsSuffix)).append('~')
+                      .append(rs.getInt("draws" + type.statsSuffix));
                     first = false;
                 }
             }
@@ -477,7 +491,8 @@ public final class DB {
     /**
      * Lấy thứ hạng của một người chơi trong bảng xếp hạng.
      */
-    static int getUserRank(String username) {
+    static int getUserRank(String username) { return getUserRank(username, BoardType.SMALL); }
+    static int getUserRank(String username, BoardType type) {
         if (username == null || "admin".equalsIgnoreCase(username)) return 0;
         ensureRoleColumn();
         String sql = "SELECT COUNT(*) + 1 AS user_rank FROM users u1 "
@@ -488,7 +503,7 @@ public final class DB {
                    + "       OR (u1.score = u2.score AND u1.wins > u2.wins) "
                    + "       OR (u1.score = u2.score AND u1.wins = u2.wins AND u1.losses < u2.losses))";
         try (Connection con = getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
+             PreparedStatement ps = con.prepareStatement(statsSql(sql, type))) {
             ps.setString(1, username);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -506,7 +521,7 @@ public final class DB {
      * Trả về chuỗi: opponent~result~points~duration~date;...
      */
     static String getRecentMatches(String username, int limit) throws SQLException {
-        String sql = "SELECT player1, player2, result, reason, duration_sec, "
+        String sql = "SELECT player1, player2, result, reason, duration_sec, board_type, "
                    + "DATE_FORMAT(played_at, '%Y-%m-%d %H:%i') as played_time "
                    + "FROM matches WHERE player1 = ? OR player2 = ? "
                    + "ORDER BY played_at DESC LIMIT ?";
@@ -546,12 +561,82 @@ public final class DB {
                       .append(res).append('~')
                       .append(points).append('~')
                       .append(duration).append('~')
-                      .append(date);
+                      .append(date).append('~').append(rs.getString("board_type"));
                     first = false;
                 }
             }
         }
         return sb.toString();
+    }
+
+
+    private static String adminStatsColumns(BoardScope scope) {
+        java.util.List<String> columns = new java.util.ArrayList<>();
+        for (String col : new String[]{"score", "wins", "losses", "draws"}) {
+            java.util.List<String> terms = new java.util.ArrayList<>();
+            for (BoardType type : scope.types()) terms.add(col + type.statsSuffix);
+            columns.add("(" + String.join(" + ", terms) + ") AS " + col);
+        }
+        return String.join(", ", columns);
+    }
+
+    private static String matchScopeWhere(BoardScope scope) {
+        // IDs come exclusively from the enum, never raw client input.
+        return scope.type == null ? "" : " WHERE board_type = '" + scope.type.id + "'";
+    }
+
+    private static String statsSql(String sql, BoardType type) {
+        for (String col : new String[]{"score", "wins", "losses", "draws"})
+            sql = sql.replaceAll("\\b" + col + "\\b", col + type.statsSuffix);
+        return sql;
+    }
+
+    /** Additive migration: original columns and historical matches remain 9x9. */
+    static void ensureBoardSchema() throws SQLException {
+        try (Connection con = getConnection(); java.sql.Statement st = con.createStatement()) {
+            for (BoardType type : BoardType.values()) {
+                if (type == BoardType.SMALL) continue;
+                for (String col : new String[]{"score", "wins", "losses", "draws"}) {
+                    String name = col + type.statsSuffix;
+                    boolean exists;
+                    try (ResultSet rs = st.executeQuery("SHOW COLUMNS FROM users LIKE '" + name + "'")) {
+                        exists = rs.next();
+                    }
+                    if (!exists) st.executeUpdate("ALTER TABLE users ADD COLUMN " + name + " INT NOT NULL DEFAULT 0");
+                }
+            }
+            boolean exists;
+            try (ResultSet rs = st.executeQuery("SHOW COLUMNS FROM matches LIKE 'board_type'")) { exists = rs.next(); }
+            if (!exists) st.executeUpdate("ALTER TABLE matches ADD COLUMN board_type VARCHAR(10) NOT NULL DEFAULT '9x9'");
+        }
+    }
+
+    /** History and both players' statistics are committed together. */
+    static void recordResult(String p1, String p2, String result, String reason,
+                             int seconds, BoardType type) throws SQLException {
+        try (Connection con = getConnection()) {
+            con.setAutoCommit(false);
+            try {
+                try (PreparedStatement ps = con.prepareStatement(
+                        "INSERT INTO matches(player1, player2, result, reason, duration_sec, board_type) VALUES (?, ?, ?, ?, ?, ?)")) {
+                    ps.setString(1, p1); ps.setString(2, p2); ps.setString(3, result);
+                    ps.setString(4, reason); ps.setInt(5, seconds); ps.setString(6, type.id);
+                    ps.executeUpdate();
+                }
+                String[] names = {p1, p2};
+                for (int i = 0; i < 2; i++) {
+                    boolean draw = "DRAW".equals(result);
+                    boolean win = (i == 0 && "P1_WIN".equals(result)) || (i == 1 && "P2_WIN".equals(result));
+                    String col = draw ? "draws" : win ? "wins" : "losses";
+                    String sql = statsSql("UPDATE users SET score = score + ?, " + col + " = " + col + " + 1 WHERE username = ?", type);
+                    try (PreparedStatement ps = con.prepareStatement(sql)) {
+                        ps.setInt(1, draw ? 1 : win ? 3 : 0); ps.setString(2, names[i]);
+                        if (ps.executeUpdate() != 1) throw new SQLException("Player no longer exists: " + names[i]);
+                    }
+                }
+                con.commit();
+            } catch (SQLException e) { con.rollback(); throw e; }
+        }
     }
 
     private DB() {}

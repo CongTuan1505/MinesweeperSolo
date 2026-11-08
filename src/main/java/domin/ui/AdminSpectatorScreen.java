@@ -1,5 +1,7 @@
 package domin.ui;
 
+import domin.BoardType;
+
 
 
 import java.awt.*;
@@ -204,6 +206,11 @@ public class AdminSpectatorScreen extends JPanel {
 
         centerBox.add(liveBadge);
         centerBox.add(title);
+        BoardType mode = BoardType.fromId(rows + "x" + cols);
+        JLabel modeLabel = new JLabel(mode.displayName());
+        modeLabel.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD));
+        modeLabel.setForeground(Theme.ACCENT_CYAN);
+        centerBox.add(modeLabel);
 
         // Right: God Mode Toggle
         final JCheckBox godModeBox = new JCheckBox("Hiện vị trí mìn (Radar Quản trị)", godMode);
@@ -222,7 +229,11 @@ public class AdminSpectatorScreen extends JPanel {
 
         bar.add(backBtn, BorderLayout.WEST);
         bar.add(centerBox, BorderLayout.CENTER);
-        bar.add(godModeBox, BorderLayout.EAST);
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        controls.setOpaque(false);
+        controls.add(new SoundToggleButton());
+        controls.add(godModeBox);
+        bar.add(controls, BorderLayout.EAST);
         return bar;
     }
 
@@ -303,7 +314,13 @@ public class AdminSpectatorScreen extends JPanel {
         boardWrapper.add(boardBorder);
 
         arena.add(headerCard, BorderLayout.NORTH);
-        arena.add(boardWrapper, BorderLayout.CENTER);
+        JScrollPane boardScroll = new JScrollPane(boardWrapper);
+        boardScroll.setMinimumSize(new Dimension(150, 150));
+        boardScroll.setPreferredSize(new Dimension(420, 450));
+        boardScroll.setOpaque(false);
+        boardScroll.getViewport().setOpaque(false);
+        boardScroll.setBorder(BorderFactory.createEmptyBorder());
+        arena.add(boardScroll, BorderLayout.CENTER);
         return arena;
     }
 
@@ -618,7 +635,8 @@ public class AdminSpectatorScreen extends JPanel {
         if (timerLabel != null) {
             int curMin = elapsedSec / 60;
             int curSec = elapsedSec % 60;
-            timerLabel.setText(String.format("%02d:%02d / 05:00", curMin, curSec));
+            int limit = BoardType.fromId(rows + "x" + cols).timeLimit;
+            timerLabel.setText(String.format("%02d:%02d / %02d:%02d", curMin, curSec, limit / 60, limit % 60));
         }
     }
 

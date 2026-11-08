@@ -65,6 +65,10 @@ public class Server {
         volatile Match match;
         volatile Match spectatingMatch;
         volatile boolean isAdmin = false;
+        volatile BoardType queueType = BoardType.SMALL;
+        volatile BoardType profileType = BoardType.SMALL;
+        volatile BoardScope adminScope = BoardScope.ALL;
+        final Map<String, BoardType> invitations = new ConcurrentHashMap<>();
 
         Peer(Socket socket) throws IOException {
             this.wire = new Wire(socket);
@@ -83,22 +87,26 @@ public class Server {
     //  Board — bàn mìn thật, CHỈ tồn tại ở Server
     // ====================================================================
     static class Board {
-        private final boolean[][] mine = new boolean[Model.ROWS][Model.COLS];
-        private final int[][] adjacent = new int[Model.ROWS][Model.COLS];
-
-        Board(long seed) {
+        final BoardType type;
+        private final boolean[][] mine;
+        private final int[][] adjacent;
+        Board(long seed) { this(seed, BoardType.SMALL); }
+        Board(long seed, BoardType type) {
+            this.type = type;
+            mine = new boolean[type.rows][type.cols];
+            adjacent = new int[type.rows][type.cols];
             Random rnd = new Random(seed);
             int placed = 0;
-            while (placed < Model.MINES) {
-                int r = rnd.nextInt(Model.ROWS);
-                int c = rnd.nextInt(Model.COLS);
+            while (placed < type.mines) {
+                int r = rnd.nextInt(type.rows);
+                int c = rnd.nextInt(type.cols);
                 if (!mine[r][c]) {
                     mine[r][c] = true;
                     placed++;
                 }
             }
-            for (int r = 0; r < Model.ROWS; r++) {
-                for (int c = 0; c < Model.COLS; c++) {
+            for (int r = 0; r < type.rows; r++) {
+                for (int c = 0; c < type.cols; c++) {
                     int count = 0;
                     for (int dr = -1; dr <= 1; dr++) {
                         for (int dc = -1; dc <= 1; dc++) {
@@ -115,7 +123,7 @@ public class Server {
         }
 
         boolean inRange(int r, int c) {
-            return r >= 0 && r < Model.ROWS && c >= 0 && c < Model.COLS;
+            return r >= 0 && r < type.rows && c >= 0 && c < type.cols;
         }
 
         boolean isMine(int r, int c) { return mine[r][c]; }
@@ -128,16 +136,22 @@ public class Server {
     // ====================================================================
     static class Player {
         final Peer peer;
-        final boolean[][] revealed = new boolean[Model.ROWS][Model.COLS];
+        final boolean[][] revealed;
         /** 0 = không có, 1 = cờ, 2 = dấu hỏi */
-        final int[][] flag = new int[Model.ROWS][Model.COLS];
+        final int[][] flag;
+        final BoardType type;
         int openedSafe = 0;
         int flags = 0;
         String status = Model.ST_PLAYING;
 
-        Player(Peer peer) { this.peer = peer; }
+        Player(Peer peer) { this(peer, BoardType.SMALL); }
+        Player(Peer peer, BoardType type) {
+            this.peer = peer; this.type = type;
+            revealed = new boolean[type.rows][type.cols];
+            flag = new int[type.rows][type.cols];
+        }
 
-        int percent() { return openedSafe * 100 / Model.SAFE_TOTAL; }
+        int percent() { return openedSafe * 100 / type.safeTotal(); }
     }
 
     // ====================================================================
@@ -146,6 +160,7 @@ public class Server {
     class Match {
         final String matchId;
         final Board board;
+        final BoardType type;
         final Player[] players = new Player[2];
         final Set<Peer> spectators = ConcurrentHashMap.newKeySet();
         ScheduledFuture<?> ticker;
@@ -157,11 +172,14 @@ public class Server {
         }
 
         /** Dùng seed cố định khi cần kiểm thử. */
-        Match(Peer a, Peer b, long seed) {
+        Match(Peer a, Peer b, long seed) { this(a, b, seed, BoardType.SMALL); }
+        Match(Peer a, Peer b, BoardType type) { this(a, b, System.nanoTime(), type); }
+        Match(Peer a, Peer b, long seed, BoardType type) {
+            this.type = type;
             this.matchId = "M" + matchCounter.incrementAndGet();
-            this.players[0] = new Player(a);
-            this.players[1] = new Player(b);
-            this.board = new Board(seed);
+            this.players[0] = new Player(a, type);
+            this.players[1] = new Player(b, type);
+            this.board = new Board(seed, type);
         }
 
         void sendToSpectators(String message) {
@@ -179,8 +197,8 @@ public class Server {
                 Player me = players[i];
                 Player opp = players[1 - i];
                 me.peer.match = this;
-                me.peer.send("MATCH_START|" + opp.peer.name + "|" + Model.ROWS + "|"
-                        + Model.COLS + "|" + Model.MINES + "|" + Model.TIME_LIMIT_SEC);
+                me.peer.send("MATCH_START|" + opp.peer.name + "|" + type.rows + "|"
+                        + type.cols + "|" + type.mines + "|" + type.timeLimit);
             }
             startMillis = System.currentTimeMillis();
             broadcast("PLAYER_STATUS|" + players[0].peer.name + "|IN_MATCH", null);
@@ -229,7 +247,7 @@ public class Server {
                 sendToSpectators("SPECTATE_NOTIFY|" + me.peer.name + " vừa mở thêm một vùng " + opened.size() + " ô");
             }
 
-            if (me.openedSafe == Model.SAFE_TOTAL) {
+            if (me.openedSafe == type.safeTotal()) {
                 me.status = Model.ST_DONE;
                 opp.peer.send("NOTIFY|Đối thủ đã hoàn thành");
                 sendToSpectators("SPECTATE_NOTIFY|" + me.peer.name + " đã hoàn thành toàn bộ bàn mìn!");
@@ -286,7 +304,7 @@ public class Server {
         private synchronized void tick() {
             if (finished) return;
             int elapsed = elapsedSec();
-            if (elapsed >= Model.TIME_LIMIT_SEC) {
+            if (elapsed >= type.timeLimit) {
                 players[0].peer.send("NOTIFY|Hết giờ!");
                 players[1].peer.send("NOTIFY|Hết giờ!");
                 sendToSpectators("SPECTATE_NOTIFY|Hết thời gian thi đấu!");
@@ -352,8 +370,8 @@ public class Server {
         private String minesMessage() {
             StringBuilder sb = new StringBuilder("MINES|");
             boolean first = true;
-            for (int r = 0; r < Model.ROWS; r++) {
-                for (int c = 0; c < Model.COLS; c++) {
+            for (int r = 0; r < type.rows; r++) {
+                for (int c = 0; c < type.cols; c++) {
                     if (board.isMine(r, c)) {
                         if (!first) sb.append(';');
                         sb.append(r).append(',').append(c);
@@ -414,9 +432,7 @@ public class Server {
                 @Override
                 public void run() {
                     try {
-                        DB.saveMatch(p1, p2, matchResult, matchReason, elapsed);
-                        DB.updateStats(p1, results[0]);
-                        DB.updateStats(p2, results[1]);
+                        DB.recordResult(p1, p2, matchResult, matchReason, elapsed, type);
 
                         // Cập nhật ngay profile mới nhất cho 2 người chơi
                         sendProfile(activePeers.get(p1));
@@ -438,21 +454,22 @@ public class Server {
 
     synchronized void markOffline(String username) { online.remove(username); }
 
-    void findMatch(Peer peer) {
-        Peer opponent;
+    void findMatch(Peer peer) { findMatch(peer, BoardType.SMALL); }
+    void findMatch(Peer peer, BoardType type) {
         synchronized (queue) {
-            if (queue.contains(peer)) return;
-            opponent = queue.poll();
-            while (opponent != null && !opponent.isConnected()) {
-                opponent = queue.poll();
+            if (peer.match != null || peer.isAdmin || queue.contains(peer)) return;
+            Peer opponent = null;
+            java.util.Iterator<Peer> it = queue.iterator();
+            while (it.hasNext()) {
+                Peer candidate = it.next();
+                if (!candidate.isConnected() || candidate.match != null) { it.remove(); continue; }
+                if (candidate.queueType == type) { opponent = candidate; it.remove(); break; }
             }
             if (opponent == null) {
-                queue.add(peer);
-                peer.send("WAITING");
-                return;
+                peer.queueType = type; queue.add(peer); peer.send("WAITING"); return;
             }
+            new Match(opponent, peer, type).start();
         }
-        new Match(opponent, peer).start();
     }
 
     void removeFromQueue(Peer peer) {
@@ -480,6 +497,10 @@ public class Server {
         if (line.isEmpty()) return;
         String[] p = Wire.parse(line);
         try {
+            if ((p[0].startsWith("ADMIN_") || p[0].startsWith("SPECTATE_")) && !peer.isAdmin) {
+                peer.send("ERROR|Chức năng này chỉ dành cho quản trị viên");
+                return;
+            }
             switch (p[0]) {
                 case "REGISTER": {
                     if (p.length != 3 || !p[1].matches("[A-Za-z0-9_]{3,20}") || p[2].length() < 3) {
@@ -513,7 +534,7 @@ public class Server {
                 }
                 case "FIND_MATCH": {
                     if (peer.name != null && peer.match == null) {
-                        findMatch(peer);
+                        findMatch(peer, BoardType.fromId(Wire.field(p, 1)));
                     }
                     break;
                 }
@@ -539,6 +560,7 @@ public class Server {
                 }
                 case "GET_PROFILE": {
                     if (peer.name != null) {
+                        peer.profileType = BoardType.fromId(Wire.field(p, 1));
                         sendProfile(peer);
                     }
                     break;
@@ -567,8 +589,9 @@ public class Server {
                     break;
                 }
                 case "GET_LEADERBOARD": {
-                    String lb = DB.getLeaderboard(10);
-                    peer.send("LEADERBOARD|" + lb);
+                    BoardType type = BoardType.fromId(Wire.field(p, 1));
+                    String lb = DB.getLeaderboard(10, type);
+                    peer.send("LEADERBOARD|" + lb + "|" + type.id);
                     break;
                 }
                 case "GET_HISTORY": {
@@ -581,18 +604,21 @@ public class Server {
                 case "CHALLENGE": {
                     if (p.length >= 2 && peer.name != null) {
                         String targetName = p[1];
+                        BoardType challengeType = BoardType.fromId(Wire.field(p, 2));
+                        if (peer.match != null || peer.isAdmin) break;
                         if (targetName.equals(peer.name)) {
                             peer.send("NOTIFY|Bạn không thể tự thách đấu chính mình");
                         } else {
                             Peer target = activePeers.get(targetName);
                             if (target == null || !target.isConnected()) {
                                 peer.send("NOTIFY|Người chơi " + targetName + " hiện không online");
-                            } else if (target.match != null) {
+                            } else if (target.match != null || target.isAdmin) {
                                 peer.send("NOTIFY|Người chơi " + targetName + " đang trong trận đấu khác");
                             } else {
                                 int challengerScore = 0;
-                                try { challengerScore = DB.getScore(peer.name); } catch (Exception ignored) {}
-                                target.send("CHALLENGE_RECEIVED|" + peer.name + "|" + challengerScore);
+                                try { challengerScore = DB.getProfile(peer.name, challengeType)[0]; } catch (Exception ignored) {}
+                                target.invitations.put(peer.name, challengeType);
+                                target.send("CHALLENGE_RECEIVED|" + peer.name + "|" + challengerScore + "|" + challengeType.id);
                                 peer.send("NOTIFY|Đã gửi lời mời thách đấu tới " + targetName);
                             }
                         }
@@ -603,6 +629,11 @@ public class Server {
                     if (p.length >= 2 && peer.name != null) {
                         String fromName = p[1];
                         Peer challenger = activePeers.get(fromName);
+                        BoardType invitedType = peer.invitations.remove(fromName);
+                        if (invitedType == null || (!Wire.field(p, 2).isEmpty()
+                                && !invitedType.id.equals(Wire.field(p, 2)))) {
+                            peer.send("ERROR|Lời mời không còn hiệu lực"); break;
+                        }
                         if (challenger == null || !challenger.isConnected()) {
                             peer.send("NOTIFY|Người thách đấu không còn online");
                         } else if (challenger.match != null) {
@@ -610,9 +641,14 @@ public class Server {
                         } else if (peer.match != null) {
                             peer.send("NOTIFY|Bạn đang trong trận đấu khác");
                         } else {
-                            removeFromQueue(challenger);
-                            removeFromQueue(peer);
-                            new Match(challenger, peer).start();
+                            synchronized (queue) {
+                                if (challenger.match != null || peer.match != null) {
+                                    peer.send("ERROR|Một người chơi đã vào trận khác"); break;
+                                }
+                                removeFromQueue(challenger);
+                                removeFromQueue(peer);
+                                new Match(challenger, peer, invitedType).start();
+                            }
                         }
                     }
                     break;
@@ -620,6 +656,7 @@ public class Server {
                 case "CHALLENGE_REJECT": {
                     if (p.length >= 2 && peer.name != null) {
                         String fromName = p[1];
+                        peer.invitations.remove(fromName);
                         Peer challenger = activePeers.get(fromName);
                         if (challenger != null && challenger.isConnected()) {
                             challenger.send("NOTIFY|" + peer.name + " đã từ chối lời thách đấu");
@@ -635,9 +672,11 @@ public class Server {
                     removeFromQueue(peer);
                     Match m = peer.match;
                     if (m != null) m.handleDisconnect(peer);
+                    peer.invitations.clear();
                     String oldName = peer.name;
                     if (oldName != null) {
                         activePeers.remove(oldName);
+                        for (Peer other : activePeers.values()) other.invitations.remove(oldName);
                         markOffline(oldName);
                         peer.name = null;
                         peer.isAdmin = false;
@@ -647,20 +686,23 @@ public class Server {
                     break;
                 }
                 case "ADMIN_GET_MATCHES": {
-                    peer.send(buildAdminMatchListMessage());
+                    peer.adminScope = BoardScope.fromId(Wire.field(p, 1));
+                    peer.send(buildAdminMatchListMessage(peer.adminScope));
                     break;
                 }
                 case "ADMIN_GET_STATS": {
-                    int onlineCount = activePeers.size();
-                    int matchesCount = activeMatches.size();
+                    peer.adminScope = BoardScope.fromId(Wire.field(p, 1));
+                    int onlineCount = (int) activePeers.values().stream().filter(player -> !player.isAdmin).count();
+                    int matchesCount = (int) activeMatches.values().stream()
+                            .filter(match -> !match.finished && peer.adminScope.matches(match.type)).count();
                     int totalUsers = DB.getTotalUsers();
-                    int totalMatches = DB.getTotalMatches();
-                    peer.send("ADMIN_STATS|" + onlineCount + "|" + matchesCount + "|" + totalUsers + "|" + totalMatches);
+                    int totalMatches = DB.getTotalMatches(peer.adminScope);
+                    peer.send("ADMIN_STATS|" + onlineCount + "|" + matchesCount + "|" + totalUsers + "|" + totalMatches + "|" + peer.adminScope.id());
                     break;
                 }
                 case "ADMIN_GET_USERS": {
-                    String users = DB.getAllUsersForAdmin(50);
-                    peer.send("ADMIN_USER_LIST|" + users);
+                    peer.adminScope = BoardScope.fromId(Wire.field(p, 1));
+                    sendAdminUsers(peer);
                     break;
                 }
                 case "ADMIN_RESET_PASSWORD": {
@@ -669,7 +711,7 @@ public class Server {
                         String newPass = p[2];
                         boolean ok = DB.adminResetPassword(targetUser, newPass);
                         peer.send(ok ? "NOTIFY|Đã đổi mật khẩu cho người dùng " + targetUser : "ERROR|Không đổi được mật khẩu");
-                        peer.send("ADMIN_USER_LIST|" + DB.getAllUsersForAdmin(50));
+                        sendAdminUsers(peer);
                     }
                     break;
                 }
@@ -678,16 +720,23 @@ public class Server {
                         String targetUser = p[1];
                         boolean ok = DB.adminDeleteUser(targetUser);
                         peer.send(ok ? "NOTIFY|Đã xóa tài khoản " + targetUser : "ERROR|Không thể xóa tài khoản này");
-                        peer.send("ADMIN_USER_LIST|" + DB.getAllUsersForAdmin(50));
+                        sendAdminUsers(peer);
                     }
                     break;
                 }
                 case "ADMIN_RESET_SCORE": {
                     if (peer.isAdmin && p.length >= 2) {
                         String targetUser = p[1];
-                        boolean ok = DB.adminResetScore(targetUser);
-                        peer.send(ok ? "NOTIFY|Đã reset điểm cho " + targetUser : "ERROR|Không thể reset điểm");
-                        peer.send("ADMIN_USER_LIST|" + DB.getAllUsersForAdmin(50));
+                        BoardScope scope = BoardScope.fromId(Wire.field(p, 2));
+                        Peer target = activePeers.get(targetUser);
+                        if (target != null && target.match != null) {
+                            peer.send("ERROR|Không thể đặt lại thành tích khi người chơi đang trong trận");
+                            break;
+                        }
+                        boolean ok = DB.adminResetScore(targetUser, scope);
+                        peer.send(ok ? "NOTIFY|Đã đặt lại thành tích " + scope + " cho " + targetUser : "ERROR|Không thể đặt lại thành tích");
+                        sendAdminUsers(peer);
+                        if (ok) { sendProfile(target); broadcastOnlineList(); }
                     }
                     break;
                 }
@@ -697,13 +746,14 @@ public class Server {
                         String role = p[2];
                         boolean ok = DB.adminSetRole(targetUser, role);
                         peer.send(ok ? "NOTIFY|Đã cập nhật vai trò " + role + " cho " + targetUser : "ERROR|Không thể đổi vai trò");
-                        peer.send("ADMIN_USER_LIST|" + DB.getAllUsersForAdmin(50));
+                        sendAdminUsers(peer);
                     }
                     break;
                 }
                 case "ADMIN_GET_HISTORY": {
-                    String history = DB.getAllMatchesForAdmin(50);
-                    peer.send("ADMIN_HISTORY_LIST|" + history);
+                    peer.adminScope = BoardScope.fromId(Wire.field(p, 1));
+                    String history = DB.getAllMatchesForAdmin(50, peer.adminScope);
+                    peer.send("ADMIN_HISTORY_LIST|" + history + "|" + peer.adminScope.id());
                     break;
                 }
                 case "SPECTATE_START": {
@@ -745,7 +795,7 @@ public class Server {
                 default:
                     peer.send("ERROR|Lệnh không hợp lệ");
             }
-        } catch (NumberFormatException | ArrayIndexOutOfBoundsException e) {
+        } catch (IllegalArgumentException | ArrayIndexOutOfBoundsException e) {
             peer.send("ERROR|Lệnh không hợp lệ");
         } catch (SQLException e) {
             System.err.println("Lỗi database: " + e);
@@ -761,9 +811,11 @@ public class Server {
         removeFromQueue(peer);
         Match m = peer.match;
         if (m != null) m.handleDisconnect(peer);
+        peer.invitations.clear();
         String name = peer.name;
         if (name != null) {
             activePeers.remove(name);
+            for (Peer other : activePeers.values()) other.invitations.remove(name);
             markOffline(name);
             peer.name = null;
             peer.isAdmin = false;
@@ -777,19 +829,23 @@ public class Server {
     // ====================================================================
 
     void broadcastAdminMatches() {
-        String msg = buildAdminMatchListMessage();
         for (Peer p : activePeers.values()) {
             if (p.isAdmin && p.isConnected()) {
-                p.send(msg);
+                p.send(buildAdminMatchListMessage(p.adminScope));
             }
         }
     }
 
-    String buildAdminMatchListMessage() {
+    void sendAdminUsers(Peer peer) {
+        peer.send("ADMIN_USER_LIST|" + DB.getAllUsersForAdmin(50, peer.adminScope) + "|" + peer.adminScope.id());
+    }
+
+    String buildAdminMatchListMessage() { return buildAdminMatchListMessage(BoardScope.ALL); }
+    String buildAdminMatchListMessage(BoardScope scope) {
         StringBuilder sb = new StringBuilder("ADMIN_MATCH_LIST|");
         boolean first = true;
         for (Match m : activeMatches.values()) {
-            if (m.finished) continue;
+            if (m.finished || !scope.matches(m.type)) continue;
             if (!first) sb.append(';');
             sb.append(m.players[0].peer.name).append('~')
               .append(m.players[1].peer.name).append('~')
@@ -800,10 +856,10 @@ public class Server {
               .append(m.players[0].flags).append('~')
               .append(m.players[1].flags).append('~')
               .append(m.players[0].status).append('~')
-              .append(m.players[1].status);
+              .append(m.players[1].status).append('~').append(m.type.id);
             first = false;
         }
-        return sb.toString();
+        return sb.append("|").append(scope.id()).toString();
     }
 
     void sendSpectateInit(Peer peer, Match m) {
@@ -811,15 +867,15 @@ public class Server {
         sb.append(m.matchId).append('|')
           .append(m.players[0].peer.name).append('|')
           .append(m.players[1].peer.name).append('|')
-          .append(Model.ROWS).append('|')
-          .append(Model.COLS).append('|')
-          .append(Model.MINES).append('|')
+          .append(m.type.rows).append('|')
+          .append(m.type.cols).append('|')
+          .append(m.type.mines).append('|')
           .append(m.elapsedSec()).append('|');
 
         // mineLocations: r,c;r,c;...
         boolean firstMine = true;
-        for (int r = 0; r < Model.ROWS; r++) {
-            for (int c = 0; c < Model.COLS; c++) {
+        for (int r = 0; r < m.type.rows; r++) {
+            for (int c = 0; c < m.type.cols; c++) {
                 if (m.board.isMine(r, c)) {
                     if (!firstMine) sb.append(';');
                     sb.append(r).append(',').append(c);
@@ -831,8 +887,8 @@ public class Server {
 
         // p1Revealed: r,c,adj;...
         boolean firstP1Rev = true;
-        for (int r = 0; r < Model.ROWS; r++) {
-            for (int c = 0; c < Model.COLS; c++) {
+        for (int r = 0; r < m.type.rows; r++) {
+            for (int c = 0; c < m.type.cols; c++) {
                 if (m.players[0].revealed[r][c]) {
                     if (!firstP1Rev) sb.append(';');
                     sb.append(r).append(',').append(c).append(',').append(m.board.adjacent(r, c));
@@ -844,8 +900,8 @@ public class Server {
 
         // p1Flags: r,c,flag;...
         boolean firstP1Flag = true;
-        for (int r = 0; r < Model.ROWS; r++) {
-            for (int c = 0; c < Model.COLS; c++) {
+        for (int r = 0; r < m.type.rows; r++) {
+            for (int c = 0; c < m.type.cols; c++) {
                 if (m.players[0].flag[r][c] != 0) {
                     if (!firstP1Flag) sb.append(';');
                     sb.append(r).append(',').append(c).append(',').append(m.players[0].flag[r][c]);
@@ -857,8 +913,8 @@ public class Server {
 
         // p2Revealed: r,c,adj;...
         boolean firstP2Rev = true;
-        for (int r = 0; r < Model.ROWS; r++) {
-            for (int c = 0; c < Model.COLS; c++) {
+        for (int r = 0; r < m.type.rows; r++) {
+            for (int c = 0; c < m.type.cols; c++) {
                 if (m.players[1].revealed[r][c]) {
                     if (!firstP2Rev) sb.append(';');
                     sb.append(r).append(',').append(c).append(',').append(m.board.adjacent(r, c));
@@ -870,8 +926,8 @@ public class Server {
 
         // p2Flags: r,c,flag;...
         boolean firstP2Flag = true;
-        for (int r = 0; r < Model.ROWS; r++) {
-            for (int c = 0; c < Model.COLS; c++) {
+        for (int r = 0; r < m.type.rows; r++) {
+            for (int c = 0; c < m.type.cols; c++) {
                 if (m.players[1].flag[r][c] != 0) {
                     if (!firstP2Flag) sb.append(';');
                     sb.append(r).append(',').append(c).append(',').append(m.players[1].flag[r][c]);
@@ -915,10 +971,11 @@ public class Server {
     void sendProfile(Peer peer) {
         if (peer != null && peer.isConnected() && peer.name != null) {
             try {
-                int[] prof = DB.getProfile(peer.name);
+                BoardType selectedType = peer.profileType;
+                int[] prof = DB.getProfile(peer.name, selectedType);
                 String av = DB.getAvatar(peer.name);
-                int rank = DB.getUserRank(peer.name);
-                peer.send("PROFILE|" + prof[0] + "|" + prof[1] + "|" + prof[2] + "|" + prof[3] + "|" + (av != null ? av : "") + "|" + rank);
+                int rank = DB.getUserRank(peer.name, selectedType);
+                peer.send("PROFILE|" + prof[0] + "|" + prof[1] + "|" + prof[2] + "|" + prof[3] + "|" + (av != null ? av : "") + "|" + rank + "|" + selectedType.id);
             } catch (Exception ignored) {}
         }
     }
@@ -941,9 +998,10 @@ public class Server {
     // ====================================================================
     //  main — Chạy: java domin.Server [port]
     // ====================================================================
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, SQLException {
         DB.ensureAvatarColumn();
         DB.ensureRoleColumn();
+        DB.ensureBoardSchema();
         int port = args.length > 0 ? Integer.parseInt(args[0]) : Model.PORT;
         Server app = new Server();
         try (ServerSocket socket = new ServerSocket(port)) {

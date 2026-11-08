@@ -160,3 +160,48 @@ Mỗi lệnh là một dòng văn bản, các phần cách nhau bằng `|`.
 | Client "Không kết nối được Server" | Chưa chạy Server, sai IP, hoặc Firewall chặn cổng 5555 |
 | Hai máy không thấy nhau | Kiểm tra cùng mạng Wi-Fi/LAN; mạng công ty/trường học hay chặn kết nối P2P giữa các máy |
 | Chữ tiếng Việt lỗi font | Thêm `-Dfile.encoding=UTF-8` khi chạy `java` trực tiếp (các script `.sh`/`.bat` không cần vì Maven tự lo) |
+
+## Các loại bàn đấu
+
+| Bàn | Số mìn | Thời gian |
+| --- | --- | --- |
+| 9×9 | 10 | 5 phút |
+| 16×16 | 40 | 10 phút |
+| 16×30 | 99 | 15 phút |
+
+Chọn loại bàn phía trên nút tìm trận. Ghép ngẫu nhiên chỉ ghép người chọn cùng loại bàn.
+Khi thách đấu, chọn bàn trong hộp thoại; người nhận thấy loại bàn trong lời mời.
+Profile và bảng xếp hạng có lựa chọn bàn riêng; điểm, thắng, thua, hòa, tỷ lệ thắng và thứ hạng độc lập.
+Lịch sử trận hiển thị thêm loại bàn.
+
+Khởi động lại server và client sau khi nâng cấp. Server tự bổ sung các cột thống kê cho hai loại bàn mới
+và cột matches.board_type; tài khoản MySQL cần quyền ALTER. Dữ liệu cũ thuộc bàn 9×9 được giữ nguyên.
+Mỗi kết quả trận được lưu cùng thống kê hai người trong một transaction.
+
+## Âm thanh
+
+Hiệu ứng ngắn cho mở ô/vùng, đặt/gỡ cờ, bắt đầu trận, lời mời thách đấu, thắng/thua/hòa,
+trúng mìn và cảnh báo 10 giây cuối. Nút Âm thanh có ở thanh trên của sảnh và dưới bàn chơi;
+lựa chọn bật/tắt được lưu trên máy. Tắt âm thanh dừng ngay các hiệu ứng đang phát.
+Âm thanh được tổng hợp cục bộ bằng Java Sound, không cần tải tệp hoặc thư viện ngoài.
+Máy không có thiết bị phát âm thanh vẫn chơi bình thường.
+
+## Quản trị theo chế độ
+
+Bộ lọc ở trang admin áp dụng cho thành tích người chơi, trận đang đấu, lịch sử và số trận thống kê.
+“Tất cả chế độ” cộng thành tích của ba loại bàn; chọn Cơ bản/Nâng cao/Chuyên gia để xem riêng.
+Số tài khoản và số người chơi online luôn tính toàn hệ thống.
+
+Nút đặt lại thành tích chỉ xóa điểm và thắng/thua/hòa trong phạm vi đang chọn; lịch sử trận được giữ nguyên.
+Không đặt lại thành tích khi người chơi đang thi đấu. Danh sách giữ lựa chọn người chơi khi tự làm mới.
+Giám sát hiển thị chế độ, thời gian tương ứng và hỗ trợ cuộn bàn lớn; bộ lọc được giữ khi quay lại admin.
+Âm thanh bật/tắt tại admin chỉ áp dụng cho máy hiện tại, không thay đổi lựa chọn của người chơi khác.
+Các lệnh quản trị và giám sát được kiểm tra quyền ở server. Sau nâng cấp cần khởi động lại server và client.
+
+
+Các nút bấm, menu, checkbox và bộ chọn chế độ có tiếng click nhẹ, kể cả khi kích hoạt bằng bàn phím.
+Âm click dùng chung nút bật/tắt âm thanh; cập nhật dữ liệu tự động không phát tiếng click.
+
+Nhạc nền ambient nhẹ được tổng hợp cục bộ, lặp liên tục trong ứng dụng và phát độc lập với hiệu ứng.
+Nút Âm thanh bật/tắt đồng thời cả nhạc nền và hiệu ứng; tắt sẽ dừng nhạc ngay, bật sẽ phát lại.
+Không cần tải nhạc hoặc thêm thư viện.

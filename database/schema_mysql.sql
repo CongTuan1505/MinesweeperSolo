@@ -20,6 +20,14 @@ CREATE TABLE IF NOT EXISTS users (
     wins          INT          NOT NULL DEFAULT 0, -- Tổng số trận thắng
     losses        INT          NOT NULL DEFAULT 0, -- Tổng số trận thua
     draws         INT          NOT NULL DEFAULT 0, -- Tổng số trận hòa
+    score_16x16   INT NOT NULL DEFAULT 0,
+    wins_16x16    INT NOT NULL DEFAULT 0,
+    losses_16x16  INT NOT NULL DEFAULT 0,
+    draws_16x16   INT NOT NULL DEFAULT 0,
+    score_16x30   INT NOT NULL DEFAULT 0,
+    wins_16x30    INT NOT NULL DEFAULT 0,
+    losses_16x30  INT NOT NULL DEFAULT 0,
+    draws_16x30   INT NOT NULL DEFAULT 0,
     avatar        MEDIUMTEXT   NULL,
     is_online     TINYINT(1)   NOT NULL DEFAULT 0, -- 0: Offline, 1: Online
     created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
@@ -39,6 +47,7 @@ CREATE TABLE IF NOT EXISTS matches (
     player2             VARCHAR(50) NOT NULL,
     result              VARCHAR(10) NOT NULL, -- P1_WIN, P2_WIN, DRAW
     reason              VARCHAR(20) NOT NULL, -- COMPLETE, MINE, SURRENDER, DISCONNECT, TIMEOUT
+    board_type          VARCHAR(10) NOT NULL DEFAULT '9x9',
     duration_sec        INT         NOT NULL DEFAULT 0, -- Thời gian thi đấu tính theo giây
     player1_safe_opened INT         DEFAULT 0,          -- Số ô an toàn P1 đã mở
     player2_safe_opened INT         DEFAULT 0,          -- Số ô an toàn P2 đã mở
@@ -115,34 +124,3 @@ FROM matches m
 ORDER BY m.played_at DESC;
 
 -- --------------------------------------------------------------------
--- 5. DỮ LIỆU MẪU (Seed Data)
--- Mật khẩu mặc định cho tất cả tài khoản mẫu là: 123456
--- Chuỗi băm SHA-256 tương ứng: 8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92
--- --------------------------------------------------------------------
-
-INSERT INTO users (username, password_hash, score, wins, losses, draws) VALUES
-('admin',          '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', 45, 15,  2, 0),
-('master_sweeper', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', 36, 12,  3, 1),
-('ninja_bomber',   '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', 28,  9,  4, 2),
-('pro_miner',      '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', 21,  7,  5, 0),
-('lucky_boy',      '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', 16,  5,  6, 1),
-('speedy',         '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', 15,  5,  2, 0),
-('shadow_walker',  '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', 12,  4,  5, 0),
-('cyber_ghost',    '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',  9,  3,  4, 0),
-('player1',        '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',  6,  2,  3, 1),
-('player2',        '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',  3,  1,  2, 0),
-('tester',         '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',  0,  0,  0, 0)
-ON DUPLICATE KEY UPDATE 
-    score = VALUES(score), 
-    wins = VALUES(wins), 
-    losses = VALUES(losses), 
-    draws = VALUES(draws);
-
--- Một số ván đấu mẫu để HomeScreen hiển thị lịch sử sinh động ngay khi đăng nhập
-INSERT INTO matches (player1, player2, result, reason, duration_sec, player1_safe_opened, player2_safe_opened, played_at) VALUES
-('player1', 'player2',        'P1_WIN', 'COMPLETE',  84, 71, 52, NOW() - INTERVAL 1 HOUR),
-('admin',   'player1',        'P1_WIN', 'MINE',      45, 38, 19, NOW() - INTERVAL 3 HOUR),
-('player1', 'lucky_boy',      'DRAW',   'TIMEOUT',  300, 60, 60, NOW() - INTERVAL 5 HOUR),
-('player1', 'master_sweeper', 'P2_WIN', 'COMPLETE',  68, 49, 71, NOW() - INTERVAL 1 DAY),
-('player2', 'admin',          'P2_WIN', 'MINE',      32, 12, 45, NOW() - INTERVAL 1 DAY),
-('player1', 'pro_miner',      'P1_WIN', 'SURRENDER', 75, 50, 31, NOW() - INTERVAL 2 DAY);

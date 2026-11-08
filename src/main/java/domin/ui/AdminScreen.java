@@ -1,5 +1,8 @@
 package domin.ui;
 
+import domin.BoardType;
+import domin.BoardScope;
+
 
 
 import java.awt.*;
@@ -47,6 +50,7 @@ public class AdminScreen extends JPanel {
         public int p2Flags;
         public String p1Status;
         public String p2Status;
+        public BoardType boardType = BoardType.SMALL;
 
         public MatchItem(String p1, String p2, String matchId, int elapsedSec,
                          int p1Percent, int p2Percent, int p1Flags, int p2Flags,
@@ -81,6 +85,9 @@ public class AdminScreen extends JPanel {
     // Users tab
     private DefaultTableModel usersTableModel;
     private JTable usersTable;
+    private JComboBox<BoardScope> modeSelector;
+    private JButton resetScoreBtn;
+    private String loadedUsersScope = "";
 
     // History tab
     private DefaultTableModel historyTableModel;
@@ -174,10 +181,11 @@ public class AdminScreen extends JPanel {
 
     public void requestData() {
         if (callback != null) {
-            callback.send("ADMIN_GET_STATS");
-            callback.send("ADMIN_GET_MATCHES");
-            callback.send("ADMIN_GET_USERS");
-            callback.send("ADMIN_GET_HISTORY");
+            String scope = "|" + getScopeId();
+            callback.send("ADMIN_GET_STATS" + scope);
+            callback.send("ADMIN_GET_MATCHES" + scope);
+            callback.send("ADMIN_GET_USERS" + scope);
+            callback.send("ADMIN_GET_HISTORY" + scope);
         }
     }
 
@@ -299,6 +307,7 @@ public class AdminScreen extends JPanel {
         });
 
         rightActions.add(userChip);
+        rightActions.add(new SoundToggleButton());
         rightActions.add(refreshBtn);
         rightActions.add(logoutBtn);
 
@@ -319,7 +328,7 @@ public class AdminScreen extends JPanel {
         p.add(createKpiCard("Trận Đang Đấu", activeMatchesValue, "Cặp thi đấu trực tiếp", Theme.ACCENT_CYAN));
         p.add(createKpiCard("Người Chơi Online", onlinePlayersValue, "Đang kết nối server", Theme.SUCCESS));
         p.add(createKpiCard("Tổng Người Dùng", totalUsersValue, "Tài khoản đã đăng ký", Theme.PRIMARY));
-        p.add(createKpiCard("Tổng Trận Đấu", totalMatchesValue, "Lịch sử tất cả ván", Theme.WARNING));
+        p.add(createKpiCard("Tổng Trận Đấu", totalMatchesValue, "Theo bộ lọc chế độ", Theme.WARNING));
 
         return p;
     }
@@ -407,7 +416,80 @@ public class AdminScreen extends JPanel {
 
         header.add(tabsRow, BorderLayout.WEST);
         header.add(matchCountHeader, BorderLayout.EAST);
+        JPanel filters = new JPanel(new BorderLayout(16, 0));
+        filters.setOpaque(false);
+        filters.setBorder(new EmptyBorder(12, 0, 0, 0));
+        modeSelector = new JComboBox<>(BoardScope.values()) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D)g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(16,25,46));
+                g2.fillRoundRect(1,1,getWidth()-2,getHeight()-2,12,12);
+                g2.setColor(hasFocus() || isPopupVisible() ? Theme.ACCENT_CYAN : Theme.BORDER_CARD);
+                g2.drawRoundRect(1,1,getWidth()-3,getHeight()-3,12,12);
+                g2.dispose(); super.paintComponent(g);
+            }
+        };
+        modeSelector.setOpaque(false);
+        modeSelector.setBorder(new EmptyBorder(2,2,2,2));
+        modeSelector.setUI(new javax.swing.plaf.basic.BasicComboBoxUI() {
+            @Override public void paintCurrentValueBackground(Graphics g, Rectangle r, boolean focus) {}
+            @Override protected JButton createArrowButton() {
+                JButton arrow = new JButton() {
+                    @Override protected void paintComponent(Graphics g) {
+                        Graphics2D g2=(Graphics2D)g.create();
+                        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                        g2.setColor(Theme.ACCENT_CYAN);
+                        g2.setStroke(new BasicStroke(1.5f));
+                        int x=getWidth()/2,y=getHeight()/2;
+                        g2.drawLine(x-4,y-2,x,y+2);g2.drawLine(x,y+2,x+4,y-2);
+                        g2.dispose();
+                    }
+                };
+                arrow.setContentAreaFilled(false);arrow.setBorderPainted(false);
+                arrow.setPreferredSize(new Dimension(28,30));return arrow;
+            }
+        });
+        modeSelector.setPreferredSize(new Dimension(224, 42));
+        modeSelector.setFont(Theme.BODY_FONT.deriveFont(Font.BOLD));
+        modeSelector.setBackground(Theme.BG_CARD);
+        modeSelector.setForeground(Theme.TEXT_PRIMARY);
+        modeSelector.setRenderer((list, value, index, selected, focus) -> {
+            JLabel label = new JLabel(value == null ? "" : value.toString());
+            label.setOpaque(index >= 0);
+            label.setBackground(selected ? new Color(30, 48, 77) : Theme.BG_CARD);
+            label.setForeground(selected ? Theme.ACCENT_CYAN : Theme.TEXT_PRIMARY);
+            label.setFont(Theme.BODY_FONT.deriveFont(Font.BOLD));
+            label.setBorder(new EmptyBorder(10, 12, 10, 12));
+            return label;
+        });
+        modeSelector.setToolTipText("Lọc thành tích, trận đang đấu và lịch sử theo chế độ");
+        modeSelector.getAccessibleContext().setAccessibleName("Chế độ quản lý");
+        filters.add(modeSelector, BorderLayout.WEST);
+        modeSelector.addActionListener(e -> {
+            loadedUsersScope = "";
+            if (usersTableModel != null) usersTableModel.setRowCount(0);
+            if (historyTableModel != null) historyTableModel.setRowCount(0);
+            activeMatches.clear();
+            renderMatchesList();
+            if (matchCountHeader != null) matchCountHeader.setText("Đang tải...");
+            if (activeMatchesValue != null) activeMatchesValue.setText("...");
+            if (totalMatchesValue != null) totalMatchesValue.setText("...");
+            updateScopeSummary();
+            requestData();
+        });
+        header.add(filters, BorderLayout.SOUTH);
         return header;
+    }
+
+    public String getScopeId() {
+        return modeSelector == null ? "ALL" : ((BoardScope)modeSelector.getSelectedItem()).id();
+    }
+    public void selectScope(String id) { modeSelector.setSelectedItem(BoardScope.fromId(id)); }
+    public boolean acceptsScope(String scope) { return scope == null || scope.isEmpty() || getScopeId().equals(scope); }
+    private void updateScopeSummary() {
+        BoardScope scope = BoardScope.fromId(getScopeId());
+        if (resetScoreBtn != null) resetScoreBtn.setText(scope == BoardScope.ALL ? "Đặt Lại Cả 3 Chế Độ" : "Đặt Lại " + scope);
     }
 
     private void switchTab(String tabName, JButton activeBtn) {
@@ -552,7 +634,7 @@ public class AdminScreen extends JPanel {
         card.setOpaque(false);
         card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         card.setBorder(new EmptyBorder(12, 18, 12, 18));
-        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 86));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 106));
 
         // Left Player Info
         JPanel leftPlayer = new JPanel();
@@ -591,11 +673,17 @@ public class AdminScreen extends JPanel {
 
         int min = m.elapsedSec / 60;
         int sec = m.elapsedSec % 60;
-        JLabel timeLabel = new JLabel(String.format("%02d:%02d", min, sec));
+        JLabel timeLabel = new JLabel(String.format("%02d:%02d / %02d:00", min, sec, m.boardType.timeLimit / 60));
         timeLabel.setFont(new Font(Theme.STAT_FONT.getFamily(), Font.BOLD, 13));
         timeLabel.setForeground(Theme.ACCENT_CYAN);
         timeLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
+        JLabel modeLabel = new JLabel(m.boardType.displayName());
+        modeLabel.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD));
+        modeLabel.setForeground(Theme.ACCENT_CYAN);
+        modeLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        centerBox.add(modeLabel);
+        centerBox.add(Box.createVerticalStrut(3));
         centerBox.add(liveBadge);
         centerBox.add(Box.createVerticalStrut(2));
         centerBox.add(vsLabel);
@@ -606,7 +694,7 @@ public class AdminScreen extends JPanel {
         JPanel rightPlayer = new JPanel();
         rightPlayer.setLayout(new BoxLayout(rightPlayer, BoxLayout.Y_AXIS));
         rightPlayer.setOpaque(false);
-        rightPlayer.setPreferredSize(new Dimension(280, 0));
+        rightPlayer.setPreferredSize(new Dimension(280, 70));
 
         JLabel p2Name = new JLabel(m.p2);
         p2Name.setFont(new Font(Theme.TITLE_FONT.getFamily(), Font.BOLD, 15));
@@ -630,7 +718,7 @@ public class AdminScreen extends JPanel {
         // Action Button: Spectate
         JPanel actionBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 10));
         actionBox.setOpaque(false);
-        JButton spectateBtn = createStyledButton("👁 THEO DÕI TRẬN ĐẤU", Theme.PRIMARY, Color.WHITE);
+        JButton spectateBtn = createStyledButton("THEO DÕI TRẬN ĐẤU", Theme.PRIMARY, Color.WHITE);
         spectateBtn.setFont(new Font(Theme.SUBTITLE_FONT.getFamily(), Font.BOLD, 12));
         spectateBtn.setPreferredSize(new Dimension(170, 36));
         spectateBtn.addActionListener(new ActionListener() {
@@ -715,7 +803,7 @@ public class AdminScreen extends JPanel {
         actionGroup.setOpaque(false);
 
         final JButton resetPassBtn = createStyledButton("Đổi Mật Khẩu", new Color(0x25, 0x63, 0xEB), Color.WHITE);
-        final JButton resetScoreBtn = createStyledButton("Reset Điểm", new Color(0xD9, 0x77, 0x06), Color.WHITE);
+        resetScoreBtn = createStyledButton("Đặt Lại Cả 3 Chế Độ", new Color(0xD9, 0x77, 0x06), Color.WHITE);
         final JButton setRoleBtn = createStyledButton("Đổi Quyền", new Color(0x7C, 0x3A, 0xED), Color.WHITE);
         final JButton deleteUserBtn = createStyledButton("Xóa Tài Khoản", new Color(0xDC, 0x26, 0x26), Color.WHITE);
 
@@ -788,12 +876,16 @@ public class AdminScreen extends JPanel {
         resetScoreBtn.addActionListener(e -> {
             int row = usersTable.getSelectedRow();
             if (row < 0) return;
+            if (!getScopeId().equals(loadedUsersScope)) return;
             String username = (String) usersTable.getValueAt(row, 0);
+            String scopeId = getScopeId();
+            BoardScope scope = BoardScope.fromId(scopeId);
             int confirm = JOptionPane.showConfirmDialog(this,
-                    "Bạn có chắc muốn đặt lại điểm số và số trận thắng/thua của [" + username + "] về 0?",
-                    "Xác Nhận Reset Điểm", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+                    "Đặt lại điểm và số trận thắng/thua/hòa của [" + username + "] về 0?"
+                            + "\nPhạm vi: " + scope + ". Lịch sử trận được giữ nguyên.",
+                    "Đặt Lại Thành Tích", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
             if (confirm == JOptionPane.YES_OPTION && callback != null) {
-                callback.send("ADMIN_RESET_SCORE|" + username);
+                callback.send("ADMIN_RESET_SCORE|" + username + "|" + scopeId);
             }
         });
 
@@ -831,6 +923,7 @@ public class AdminScreen extends JPanel {
         });
 
         JScrollPane scroll = new JScrollPane(usersTable);
+        scroll.setColumnHeaderView(usersTable.getTableHeader());
         scroll.setOpaque(false);
         scroll.getViewport().setOpaque(false);
         scroll.setBorder(BorderFactory.createEmptyBorder());
@@ -847,7 +940,7 @@ public class AdminScreen extends JPanel {
         JPanel p = new JPanel(new BorderLayout(0, 10));
         p.setOpaque(false);
 
-        String[] cols = {"Mã Trận", "Người Chơi 1", "Người Chơi 2", "Kết Quả", "Lý Do", "Thời Lượng", "Thời Gian Đấu"};
+        String[] cols = {"Mã Trận", "Người Chơi 1", "Người Chơi 2", "Chế Độ", "Kết Quả", "Lý Do", "Thời Lượng", "Thời Gian Đấu"};
         historyTableModel = new DefaultTableModel(cols, 0) {
             @Override public boolean isCellEditable(int row, int col) { return false; }
         };
@@ -855,6 +948,7 @@ public class AdminScreen extends JPanel {
         styleTable(historyTable);
 
         JScrollPane scroll = new JScrollPane(historyTable);
+        scroll.setColumnHeaderView(historyTable.getTableHeader());
         scroll.setOpaque(false);
         scroll.getViewport().setOpaque(false);
         scroll.setBorder(BorderFactory.createEmptyBorder());
@@ -908,7 +1002,7 @@ public class AdminScreen extends JPanel {
                 String[] parts = item.split("~");
                 if (parts.length >= 10) {
                     try {
-                        activeMatches.add(new MatchItem(
+                        MatchItem match = new MatchItem(
                                 parts[0], parts[1], parts[2],
                                 Integer.parseInt(parts[3]),
                                 Integer.parseInt(parts[4]),
@@ -916,7 +1010,9 @@ public class AdminScreen extends JPanel {
                                 Integer.parseInt(parts[6]),
                                 Integer.parseInt(parts[7]),
                                 parts[8], parts[9]
-                        ));
+                        );
+                        match.boardType = BoardType.fromId(parts.length > 10 ? parts[10] : "");
+                        activeMatches.add(match);
                     } catch (NumberFormatException ignored) {}
                 }
             }
@@ -929,6 +1025,9 @@ public class AdminScreen extends JPanel {
 
     public void setUsers(String raw) {
         if (usersTableModel == null) return;
+        String selectedUser = usersTable.getSelectedRow() >= 0
+                ? (String)usersTable.getValueAt(usersTable.getSelectedRow(), 0) : null;
+        loadedUsersScope = getScopeId();
         usersTableModel.setRowCount(0);
         if (raw == null || raw.trim().isEmpty()) return;
 
@@ -953,6 +1052,16 @@ public class AdminScreen extends JPanel {
                 } catch (NumberFormatException ignored) {}
             }
         }
+        if (selectedUser != null) {
+            for (int i=0;i<usersTableModel.getRowCount();i++) {
+                if (selectedUser.equals(usersTableModel.getValueAt(i,0))) {
+                    int view = usersTable.convertRowIndexToView(i);
+                    if (view >= 0) usersTable.setRowSelectionInterval(view, view);
+                    break;
+                }
+            }
+        }
+
     }
 
     public void setHistory(String raw) {
@@ -971,6 +1080,7 @@ public class AdminScreen extends JPanel {
                     String reason = parts[4];
                     int dur = Integer.parseInt(parts[5]);
                     String time = parts[6];
+                    String mode = BoardType.fromId(parts.length > 7 ? parts[7] : "").displayName();
 
                     String resultText;
                     if ("P1_WIN".equals(res)) resultText = p1 + " thắng";
@@ -980,7 +1090,7 @@ public class AdminScreen extends JPanel {
                     String durationText = String.format("%02d:%02d", dur / 60, dur % 60);
 
                     historyTableModel.addRow(new Object[]{
-                            id, p1, p2, resultText, reason, durationText, time
+                            id, p1, p2, mode, resultText, reason, durationText, time
                     });
                 } catch (NumberFormatException ignored) {}
             }

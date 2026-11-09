@@ -53,9 +53,9 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         this.cells = new CellLabel[rows][cols];
         this.revealed = new boolean[rows][cols];
 
-        setLayout(new BorderLayout(0, 10));
+        setLayout(new BorderLayout(0, 16));
         setOpaque(false);
-        setBorder(new EmptyBorder(12, 16, 12, 16));
+        setBorder(new EmptyBorder(18, 24, 18, 24));
 
         // ================================================================
         //  1. TOP HUD: 1v1 Battle Header (Player vs Opponent + Timer)
@@ -74,7 +74,7 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
             }
         };
         topHUD.setOpaque(false);
-        topHUD.setBorder(new EmptyBorder(10, 14, 10, 14));
+        topHUD.setBorder(new EmptyBorder(14, 18, 14, 18));
 
         // Center: Match Mode & Glowing Timer
         JPanel centerBox = new JPanel();
@@ -85,13 +85,21 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         matchMode.setForeground(new Color(0x64, 0x74, 0x8B));
         matchMode.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        timerLabel.setFont(new Font(Theme.STAT_FONT.getFamily(), Font.BOLD, 18));
+        timerLabel.setFont(new Font(Theme.STAT_FONT.getFamily(), Font.BOLD, 28));
         timerLabel.setForeground(Theme.ACCENT_CYAN);
         timerLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
 
+        centerBox.add(Box.createVerticalGlue());
         centerBox.add(matchMode);
         centerBox.add(Box.createVerticalStrut(2));
         centerBox.add(timerLabel);
+        JLabel versus = new JLabel("LIVE  /  1 VS 1");
+        versus.setForeground(Theme.TEXT_SECONDARY);
+        versus.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 10));
+        versus.setAlignmentX(Component.CENTER_ALIGNMENT);
+        centerBox.add(Box.createVerticalStrut(6));
+        centerBox.add(versus);
+        centerBox.add(Box.createVerticalGlue());
 
         topHUD.add(myProfile, BorderLayout.WEST);
         topHUD.add(centerBox, BorderLayout.CENTER);
@@ -101,7 +109,7 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         // ================================================================
         //  2. CENTER: The Minesweeper Board (Tactical Grid)
         // ================================================================
-        JPanel boardWrap = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+        JPanel boardWrap = new JPanel(new GridBagLayout());
         boardWrap.setOpaque(false);
 
         JPanel boardFrame = new JPanel(new BorderLayout()) {
@@ -118,7 +126,7 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
             }
         };
         boardFrame.setOpaque(false);
-        boardFrame.setBorder(new EmptyBorder(8, 8, 8, 8));
+        boardFrame.setBorder(new EmptyBorder(14, 14, 14, 14));
 
         JPanel board = new JPanel(new GridLayout(rows, cols, 2, 2));
         board.setOpaque(false);
@@ -149,7 +157,7 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         };
         bottomHUD.setLayout(new BoxLayout(bottomHUD, BoxLayout.Y_AXIS));
         bottomHUD.setOpaque(false);
-        bottomHUD.setBorder(new EmptyBorder(10, 14, 10, 14));
+        bottomHUD.setBorder(new EmptyBorder(14, 18, 14, 18));
 
         myBar = new PlayerProgressBar("BẠN (" + myName + ")", Theme.PRIMARY, Theme.ACCENT_CYAN);
         oppBar = new PlayerProgressBar("ĐỐI THỦ (" + oppName + ")", new Color(0xEA, 0x58, 0x0C), new Color(0xEF, 0x44, 0x44));
@@ -197,8 +205,9 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         reactions.setOpaque(false);
         for (int i = 0; i < EMOTE_IDS.length; i++) {
             final String id = EMOTE_IDS[i];
-            JButton button = new JButton(EMOTE_TEXT[i]);
-            button.setToolTipText("G\u1eedi bi\u1ec3u c\u1ea3m cho \u0111\u1ed1i th\u1ee7");
+            JButton button = new ReactionButton(i);
+            button.getAccessibleContext().setAccessibleName(EMOTE_TEXT[i]);
+            button.setToolTipText(EMOTE_TEXT[i]);
             button.setFocusPainted(false);
             button.setForeground(Theme.TEXT_PRIMARY);
             button.setBackground(new Color(0x18, 0x22, 0x38));
@@ -211,19 +220,22 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
             });
             reactions.add(button);
         }
-        bottomHUD.add(reactions);
+        JPanel progress = new JPanel(new GridLayout(1, 2, 24, 0));
+        progress.setOpaque(false);
+        progress.add(myBar);
+        progress.add(oppBar);
+        bottomHUD.add(progress);
         bottomHUD.add(Box.createVerticalStrut(10));
-        bottomHUD.add(myBar);
-        bottomHUD.add(Box.createVerticalStrut(6));
-        bottomHUD.add(oppBar);
-        bottomHUD.add(Box.createVerticalStrut(8));
-        bottomHUD.add(notifyLabel);
-        bottomHUD.add(Box.createVerticalStrut(8));
-        JPanel controls = new JPanel(new FlowLayout(FlowLayout.CENTER, 12, 0));
+        JPanel toolbar = new JPanel(new BorderLayout(12, 0));
+        toolbar.setOpaque(false);
+        toolbar.add(notifyLabel, BorderLayout.WEST);
+        toolbar.add(reactions, BorderLayout.CENTER);
+        JPanel controls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         controls.setOpaque(false);
         controls.add(new SoundToggleButton());
         controls.add(surrenderBtn);
-        bottomHUD.add(controls);
+        toolbar.add(controls, BorderLayout.EAST);
+        bottomHUD.add(toolbar);
 
         add(topHUD, BorderLayout.NORTH);
         JScrollPane boardScroll = new JScrollPane(boardWrap);
@@ -233,8 +245,8 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         boardScroll.getHorizontalScrollBar().setUnitIncrement(CellLabel.CELL_SIZE);
         boardScroll.getVerticalScrollBar().setUnitIncrement(CellLabel.CELL_SIZE);
         boardScroll.setPreferredSize(new Dimension(
-                Math.min(1000, cols * (CellLabel.CELL_SIZE + 2) + 36),
-                Math.min(580, rows * (CellLabel.CELL_SIZE + 2) + 36)));
+                Math.max(930, Math.min(1260, cols * (CellLabel.CELL_SIZE + 2) + 48)),
+                Math.min(680, rows * (CellLabel.CELL_SIZE + 2) + 60)));
         add(boardScroll, BorderLayout.CENTER);
         add(bottomHUD, BorderLayout.SOUTH);
     }
@@ -254,9 +266,75 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         for (int i = 0; i < EMOTE_IDS.length; i++) {
             if (EMOTE_IDS[i].equals(id)) {
                 card.reaction.setText(EMOTE_TEXT[i]);
+                card.reaction.setIcon(new EmoteIcon(i, 20));
                 card.reactionTimer.restart();
                 break;
             }
+        }
+    }
+
+    private static class ReactionButton extends JButton {
+        ReactionButton(int kind) {
+            setIcon(new EmoteIcon(kind, 26));
+            setPreferredSize(new Dimension(46, 42));
+            setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+            setBorderPainted(false);
+            setContentAreaFilled(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        }
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(getModel().isPressed() ? new Color(35, 75, 94) :
+                    getModel().isRollover() ? new Color(30, 51, 73) : new Color(21, 31, 49));
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 14, 14);
+            g2.setColor(getModel().isRollover() || isFocusOwner() ? Theme.ACCENT_CYAN : new Color(44, 59, 82));
+            g2.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 14, 14);
+            g2.dispose();
+            super.paintComponent(g);
+        }
+    }
+
+    /** Vector reactions render consistently without relying on emoji fonts. */
+    private static class EmoteIcon implements Icon {
+        private final int kind, size;
+        EmoteIcon(int kind, int size) { this.kind = kind; this.size = size; }
+        public int getIconWidth() { return size; }
+        public int getIconHeight() { return size; }
+        public void paintIcon(Component c, Graphics g, int x, int y) {
+            Graphics2D v = (Graphics2D) g.create();
+            v.translate(x, y);
+            v.scale(size / 32.0, size / 32.0);
+            v.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            v.setStroke(new BasicStroke(2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            v.setPaint(new GradientPaint(0, 2, new Color(255, 222, 113), 0, 30, new Color(245, 167, 48)));
+            v.fillOval(2, 2, 28, 28);
+            v.setColor(new Color(94, 56, 27));
+            if (kind == 4) {
+                v.setColor(new Color(225, 75, 97));
+                for (int eye : new int[]{10, 22}) {
+                    v.fillOval(eye-4, 9, 5, 5); v.fillOval(eye-1, 9, 5, 5);
+                    v.fillPolygon(new int[]{eye-4, eye+4, eye}, new int[]{12,12,18}, 3);
+                }
+            } else {
+                v.fillOval(9, 11, 3, kind == 2 ? 5 : 3);
+                v.fillOval(20, 11, 3, kind == 2 ? 5 : 3);
+            }
+            v.setColor(new Color(94, 56, 27));
+            if (kind == 2) v.drawOval(13, 20, 6, 7);
+            else if (kind == 3) {
+                v.drawLine(12, 23, 20, 21); v.drawLine(8, 7, 13, 8);
+                v.setColor(new Color(255, 215, 117)); v.fillRoundRect(20, 21, 8, 10, 5, 5);
+                v.setColor(new Color(94, 56, 27)); v.drawLine(22, 24, 25, 22);
+            } else {
+                v.drawArc(10, 15, 13, 10, 185, 170);
+                if (kind == 1) { v.setColor(Color.WHITE); v.fillRoundRect(12, 21, 9, 3, 2, 2); }
+                if (kind == 0) {
+                    v.setColor(new Color(255, 225, 139)); v.fillOval(24, 20, 7, 10);
+                    v.setColor(new Color(94, 56, 27)); v.drawLine(27, 21, 27, 26);
+                }
+            }
+            v.dispose();
         }
     }
 
@@ -267,14 +345,18 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         final JLabel record = new JLabel(" ");
         final JLabel reaction = new JLabel(" ");
         final Timer reactionTimer;
+        final Color accent;
 
         ProfileCard(String player, String role, Color accent) {
             super(new BorderLayout(10, 0));
             this.player = player;
+            this.accent = accent;
+            setBorder(new EmptyBorder(10, 12, 10, 12));
             setOpaque(false);
-            setPreferredSize(new Dimension(245, 98));
+            setPreferredSize(new Dimension(280, 116));
             avatar.setText(player.isEmpty() ? "?" : player.substring(0, 1).toUpperCase(java.util.Locale.ROOT));
-            avatar.setOpaque(true);
+            avatar.setOpaque(false);
+            avatar.setBorder(BorderFactory.createLineBorder(accent, 2, true));
             avatar.setBackground(new Color(0x18, 0x22, 0x38));
             avatar.setForeground(accent);
             avatar.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 26));
@@ -295,8 +377,21 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
             reaction.setForeground(accent);
             info.add(tag); info.add(name); info.add(stats); info.add(record); info.add(reaction);
             add(info, BorderLayout.CENTER);
-            reactionTimer = new Timer(4000, e -> reaction.setText(" "));
+            reactionTimer = new Timer(4000, e -> { reaction.setText(" "); reaction.setIcon(null); });
             reactionTimer.setRepeats(false);
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setPaint(new GradientPaint(0, 0, new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 24),
+                    getWidth(), getHeight(), new Color(18, 26, 43)));
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 18, 18);
+            g2.setColor(new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 65));
+            g2.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 18, 18);
+            g2.dispose();
+            super.paintComponent(g);
         }
 
         void update(int score, int wins, int losses, int draws, int rank, String image) {
@@ -329,8 +424,8 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
             this.startColor = startColor;
             this.endColor = endColor;
             setOpaque(false);
-            setPreferredSize(new Dimension(0, 32));
-            setMaximumSize(new Dimension(Integer.MAX_VALUE, 32));
+            setPreferredSize(new Dimension(0, 48));
+            setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
         }
 
         void update(int p, String flags, String status) {
@@ -354,10 +449,10 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
             g2.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.PLAIN, 10));
             g2.setColor(Theme.TEXT_SECONDARY);
             FontMetrics fm = g2.getFontMetrics();
-            g2.drawString(details, w - fm.stringWidth(details) - 2, 11);
+            g2.drawString(details, 2, 27);
 
             // Track background
-            int barY = 18;
+            int barY = 36;
             int barH = 7;
             g2.setColor(new Color(0x10, 0x17, 0x2A));
             g2.fill(new RoundRectangle2D.Float(0, barY, w, barH, 4, 4));

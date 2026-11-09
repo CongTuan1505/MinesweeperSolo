@@ -56,11 +56,11 @@ final class RankingPanel extends JPanel {
         JPanel tableHeader=new JPanel(new BorderLayout(0,14));tableHeader.setOpaque(false);
         JPanel section=new JPanel(new BorderLayout());section.setOpaque(false);
         section.add(label("BẢNG THÀNH TÍCH",12,Theme.TEXT_PRIMARY),BorderLayout.WEST);
-        section.add(label("ĐIỂM  ·  THẮNG  ·  THUA  ·  TỈ LỆ",9,Theme.TEXT_MUTED),BorderLayout.EAST);
+        section.add(label("ĐIỂM  ·  THẮNG  ·  THUA  ·  HÒA  ·  TỈ LỆ",9,Theme.TEXT_MUTED),BorderLayout.EAST);
         tableHeader.add(section,BorderLayout.NORTH);
-        String[] headings={"HẠNG","NGƯỜI CHƠI","ĐIỂM SỐ","THẮNG","THUA","TỈ LỆ THẮNG"};
-        Component[] cols=new Component[6];
-        for(int i=0;i<6;i++) cols[i]=center(headings[i],10,Theme.TEXT_MUTED);
+        String[] headings={"HẠNG","NGƯỜI CHƠI","ĐIỂM SỐ","THẮNG","THUA","HÒA","TỈ LỆ THẮNG"};
+        Component[] cols=new Component[headings.length];
+        for(int i=0;i<headings.length;i++) cols[i]=center(headings[i],10,Theme.TEXT_MUTED);
         JPanel columnNames=columns(cols);columnNames.setBorder(new EmptyBorder(0,12,0,12));
         tableHeader.add(columnNames,BorderLayout.CENTER);table.add(tableHeader,BorderLayout.NORTH);
         rows.setOpaque(false);rows.setLayout(new BoxLayout(rows,BoxLayout.Y_AXIS));
@@ -176,12 +176,13 @@ final class RankingPanel extends JPanel {
         JPanel track=new JPanel(new BorderLayout());track.setOpaque(false);track.setBorder(new EmptyBorder(0,18,3,18));track.add(progress);
         rate.add(track,BorderLayout.SOUTH);
         row.add(columns(new Component[]{rank,player,center(""+e.score,17,GOLD),
-                center(""+e.wins,13,Theme.SUCCESS),center(""+e.losses,13,new Color(248,113,113)),rate}));
+                center(""+e.wins,13,Theme.SUCCESS),center(""+e.losses,13,new Color(248,113,113)),
+                center(""+e.draws,13,Theme.WARNING),rate}));
         row.setToolTipText(e.wins+" thắng · "+e.losses+" thua · "+e.draws+" hòa");
         return row;
     }
     private static JPanel columns(Component[] components) {
-        double[] weights={.65,2.0,1,.8,.8,1.2};
+        double[] weights={.65,2.0,1,.8,.8,.8,1.2};
         JPanel p=new JPanel(new GridBagLayout());p.setOpaque(false);
         for(int i=0;i<components.length;i++) {
             GridBagConstraints c=new GridBagConstraints();c.gridx=i;c.gridy=0;c.weightx=weights[i];c.weighty=1;

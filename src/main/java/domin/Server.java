@@ -165,6 +165,7 @@ public class Server {
         final Player[] players = new Player[2];
         final Set<Peer> spectators = ConcurrentHashMap.newKeySet();
         ScheduledFuture<?> ticker;
+        final long[] lastEmote = new long[2];
         long startMillis;
         boolean finished = false;
 
@@ -201,6 +202,20 @@ public class Server {
                 me.peer.send("MATCH_START|" + opp.peer.name + "|" + type.rows + "|"
                         + type.cols + "|" + type.mines + "|" + type.timeLimit);
             }
+            for (Player player : players) {
+                try {
+                    int[] profile = DB.getProfile(player.peer.name, type);
+                    String avatar = DB.getAvatar(player.peer.name);
+                    int rank = DB.getUserRank(player.peer.name, type);
+                    String packet = "MATCH_PROFILE|" + player.peer.name + "|" + profile[0] + "|"
+                            + profile[1] + "|" + profile[2] + "|" + profile[3] + "|" + rank + "|"
+                            + (avatar == null ? "" : avatar);
+                    for (Player recipient : players) recipient.peer.send(packet);
+                } catch (Exception ignored) {
+                    for (Player recipient : players) recipient.peer.send("MATCH_PROFILE|"
+                            + player.peer.name + "|0|0|0|0|0|");
+                }
+            }
             startMillis = System.currentTimeMillis();
             broadcast("PLAYER_STATUS|" + players[0].peer.name + "|IN_MATCH", null);
             broadcast("PLAYER_STATUS|" + players[1].peer.name + "|IN_MATCH", null);
@@ -215,6 +230,15 @@ public class Server {
         }
 
         // ---- Thao tác mở ô ----
+        synchronized void handleEmote(Peer peer, String id) {
+            int i = indexOf(peer);
+            if (finished || i < 0 || !java.util.Arrays.asList("HELLO", "GOOD", "WOW", "THINK", "GG").contains(id)) return;
+            long now = System.currentTimeMillis();
+            if (now - lastEmote[i] < 2000) return;
+            lastEmote[i] = now;
+            for (Player player : players) player.peer.send("EMOTE|" + peer.name + "|" + id);
+        }
+
         synchronized void handleOpen(Peer peer, int r, int c) {
             if (finished) return;
             int i = indexOf(peer);
@@ -592,6 +616,11 @@ public class Server {
                 case "FLAG": {
                     Match m = peer.match;
                     if (m != null) m.handleFlag(peer, Integer.parseInt(p[1]), Integer.parseInt(p[2]));
+                    break;
+                }
+                case "EMOTE": {
+                    Match m = peer.match;
+                    if (m != null && p.length == 2) m.handleEmote(peer, p[1]);
                     break;
                 }
                 case "SURRENDER": {

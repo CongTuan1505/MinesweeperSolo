@@ -257,6 +257,8 @@ public class Client {
                     public void onFlagCell(int r, int c) { wire.send("FLAG|" + r + "|" + c); }
                     @Override
                     public void onSurrender() { wire.send("SURRENDER"); }
+                    @Override
+                    public void onEmote(String id) { wire.send("EMOTE|" + id); }
                 });
         homeScreen = null;
         adminScreen = null;
@@ -445,6 +447,19 @@ public class Client {
                 showGame(p[1], Integer.parseInt(p[2]), Integer.parseInt(p[3]),
                         Integer.parseInt(p[4]), Integer.parseInt(p[5]));
                 SoundEffects.shared().play(SoundEffects.Cue.START);
+                break;
+            }
+            case "MATCH_PROFILE": {
+                if (gameScreen != null && p.length >= 7) {
+                    try {
+                        gameScreen.updateProfile(p[1], Integer.parseInt(p[2]), Integer.parseInt(p[3]),
+                                Integer.parseInt(p[4]), Integer.parseInt(p[5]), Integer.parseInt(p[6]), Wire.field(p, 7));
+                    } catch (NumberFormatException ignored) {}
+                }
+                break;
+            }
+            case "EMOTE": {
+                if (gameScreen != null && p.length == 3) gameScreen.showEmote(p[1], p[2]);
                 break;
             }
             case "CELLS": {

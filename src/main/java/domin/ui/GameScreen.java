@@ -18,6 +18,7 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         void onOpenCell(int r, int c);
         void onFlagCell(int r, int c);
         void onSurrender();
+        default void onEmote(String id) {}
     }
 
     private final GameCallback callback;
@@ -32,11 +33,20 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
     private final PlayerProgressBar myBar;
     private final PlayerProgressBar oppBar;
     private boolean over = false;
+    private final String myName;
+    private final ProfileCard myProfile;
+    private final ProfileCard oppProfile;
+    private long lastEmote;
+    public static final String[] EMOTE_IDS = {"HELLO", "GOOD", "WOW", "THINK", "GG"};
+    public static final String[] EMOTE_TEXT = {"Ch\u00e0o b\u1ea1n!", "Hay qu\u00e1!", "B\u1ea5t ng\u1edd!", "\u0110ang suy ngh\u0129...", "Tr\u1eadn \u0111\u1ea5u hay!"};
 
     public GameScreen(String myName, String oppName,
                       int rows, int cols, int mines, int timeLimit,
                       GameCallback callback) {
         this.callback = callback;
+        this.myName = myName;
+        myProfile = new ProfileCard(myName, "B\u1ea0N", Theme.ACCENT_CYAN);
+        oppProfile = new ProfileCard(oppName, "\u0110\u1ed0I TH\u1ee6", Theme.DANGER);
         this.rows = rows;
         this.cols = cols;
         this.timeLimit = timeLimit;
@@ -66,20 +76,6 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         topHUD.setOpaque(false);
         topHUD.setBorder(new EmptyBorder(10, 14, 10, 14));
 
-        // Left Player (You)
-        JPanel meBox = new JPanel();
-        meBox.setLayout(new BoxLayout(meBox, BoxLayout.Y_AXIS));
-        meBox.setOpaque(false);
-        JLabel meTag = new JLabel("● BẠN");
-        meTag.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 10));
-        meTag.setForeground(Theme.ACCENT_CYAN);
-        JLabel meNameLbl = new JLabel(myName);
-        meNameLbl.setFont(new Font(Theme.TITLE_FONT.getFamily(), Font.BOLD, 14));
-        meNameLbl.setForeground(Theme.TEXT_PRIMARY);
-        meBox.add(meTag);
-        meBox.add(Box.createVerticalStrut(2));
-        meBox.add(meNameLbl);
-
         // Center: Match Mode & Glowing Timer
         JPanel centerBox = new JPanel();
         centerBox.setLayout(new BoxLayout(centerBox, BoxLayout.Y_AXIS));
@@ -97,25 +93,9 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
         centerBox.add(Box.createVerticalStrut(2));
         centerBox.add(timerLabel);
 
-        // Right Opponent
-        JPanel oppBox = new JPanel();
-        oppBox.setLayout(new BoxLayout(oppBox, BoxLayout.Y_AXIS));
-        oppBox.setOpaque(false);
-        JLabel oppTag = new JLabel("ĐỐI THỦ ●");
-        oppTag.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 10));
-        oppTag.setForeground(new Color(0xF8, 0x71, 0x71));
-        oppTag.setAlignmentX(Component.RIGHT_ALIGNMENT);
-        JLabel oppNameLbl = new JLabel(oppName);
-        oppNameLbl.setFont(new Font(Theme.TITLE_FONT.getFamily(), Font.BOLD, 14));
-        oppNameLbl.setForeground(Theme.TEXT_PRIMARY);
-        oppNameLbl.setAlignmentX(Component.RIGHT_ALIGNMENT);
-        oppBox.add(oppTag);
-        oppBox.add(Box.createVerticalStrut(2));
-        oppBox.add(oppNameLbl);
-
-        topHUD.add(meBox, BorderLayout.WEST);
+        topHUD.add(myProfile, BorderLayout.WEST);
         topHUD.add(centerBox, BorderLayout.CENTER);
-        topHUD.add(oppBox, BorderLayout.EAST);
+        topHUD.add(oppProfile, BorderLayout.EAST);
         updateTimer(0);
 
         // ================================================================
@@ -213,6 +193,26 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
             public void actionPerformed(ActionEvent e) { askSurrender(); }
         });
 
+        JPanel reactions = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
+        reactions.setOpaque(false);
+        for (int i = 0; i < EMOTE_IDS.length; i++) {
+            final String id = EMOTE_IDS[i];
+            JButton button = new JButton(EMOTE_TEXT[i]);
+            button.setToolTipText("G\u1eedi bi\u1ec3u c\u1ea3m cho \u0111\u1ed1i th\u1ee7");
+            button.setFocusPainted(false);
+            button.setForeground(Theme.TEXT_PRIMARY);
+            button.setBackground(new Color(0x18, 0x22, 0x38));
+            button.addActionListener(e -> {
+                long now = System.currentTimeMillis();
+                if (!over && now - lastEmote >= 2000) {
+                    lastEmote = now;
+                    callback.onEmote(id);
+                }
+            });
+            reactions.add(button);
+        }
+        bottomHUD.add(reactions);
+        bottomHUD.add(Box.createVerticalStrut(10));
         bottomHUD.add(myBar);
         bottomHUD.add(Box.createVerticalStrut(6));
         bottomHUD.add(oppBar);
@@ -237,6 +237,81 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
                 Math.min(580, rows * (CellLabel.CELL_SIZE + 2) + 36)));
         add(boardScroll, BorderLayout.CENTER);
         add(bottomHUD, BorderLayout.SOUTH);
+    }
+
+    public void updateProfile(String player, int score, int wins, int losses, int draws,
+                              int rank, String avatar) {
+        ProfileCard card = myProfile.player.equals(player) ? myProfile :
+                oppProfile.player.equals(player) ? oppProfile : null;
+        if (card != null) card.update(score, wins, losses, draws, rank, avatar);
+    }
+
+    public void showEmote(String player, String id) {
+        if (over) return;
+        ProfileCard card = myName.equals(player) ? myProfile :
+                oppProfile.player.equals(player) ? oppProfile : null;
+        if (card == null) return;
+        for (int i = 0; i < EMOTE_IDS.length; i++) {
+            if (EMOTE_IDS[i].equals(id)) {
+                card.reaction.setText(EMOTE_TEXT[i]);
+                card.reactionTimer.restart();
+                break;
+            }
+        }
+    }
+
+    private static class ProfileCard extends JPanel {
+        final String player;
+        final JLabel avatar = new JLabel("", SwingConstants.CENTER);
+        final JLabel stats = new JLabel("\u0110ang t\u1ea3i h\u1ed3 s\u01a1...");
+        final JLabel record = new JLabel(" ");
+        final JLabel reaction = new JLabel(" ");
+        final Timer reactionTimer;
+
+        ProfileCard(String player, String role, Color accent) {
+            super(new BorderLayout(10, 0));
+            this.player = player;
+            setOpaque(false);
+            setPreferredSize(new Dimension(245, 98));
+            avatar.setText(player.isEmpty() ? "?" : player.substring(0, 1).toUpperCase(java.util.Locale.ROOT));
+            avatar.setOpaque(true);
+            avatar.setBackground(new Color(0x18, 0x22, 0x38));
+            avatar.setForeground(accent);
+            avatar.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 26));
+            avatar.setPreferredSize(new Dimension(56, 56));
+            JPanel picture = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 14));
+            picture.setOpaque(false);
+            picture.add(avatar);
+            add(picture, BorderLayout.WEST);
+            JPanel info = new JPanel(new GridLayout(5, 1, 0, 2));
+            info.setOpaque(false);
+            JLabel tag = new JLabel(role);
+            tag.setForeground(accent);
+            JLabel name = new JLabel(player);
+            name.setForeground(Theme.TEXT_PRIMARY);
+            name.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 14));
+            stats.setForeground(Theme.TEXT_SECONDARY);
+            record.setForeground(Theme.TEXT_SECONDARY);
+            reaction.setForeground(accent);
+            info.add(tag); info.add(name); info.add(stats); info.add(record); info.add(reaction);
+            add(info, BorderLayout.CENTER);
+            reactionTimer = new Timer(4000, e -> reaction.setText(" "));
+            reactionTimer.setRepeats(false);
+        }
+
+        void update(int score, int wins, int losses, int draws, int rank, String image) {
+            stats.setText(score + " \u0111i\u1ec3m  \u2022  " + (rank > 0 ? "H\u1ea1ng #" + rank : "Ch\u01b0a x\u1ebfp h\u1ea1ng"));
+            record.setText(wins + " th\u1eafng \u00b7 " + losses + " thua \u00b7 " + draws + " h\u00f2a");
+            if (image == null || image.isEmpty()) return;
+            try {
+                java.awt.image.BufferedImage decoded = javax.imageio.ImageIO.read(
+                        new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode(image)));
+                if (decoded != null) {
+                    avatar.setIcon(new ImageIcon(decoded.getScaledInstance(56, 56, Image.SCALE_SMOOTH)));
+                    avatar.setText("");
+                }
+            } catch (java.io.IOException | IllegalArgumentException ignored) {}
+        }
     }
 
     // ================================================================
@@ -361,6 +436,8 @@ public class GameScreen extends JPanel implements CellLabel.CellClickListener {
 
     public void setGameOver() {
         over = true;
+        myProfile.reactionTimer.stop();
+        oppProfile.reactionTimer.stop();
     }
 
     public boolean isOver() {

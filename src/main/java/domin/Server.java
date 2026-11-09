@@ -68,6 +68,7 @@ public class Server {
         volatile BoardType queueType = BoardType.SMALL;
         volatile BoardType profileType = BoardType.SMALL;
         volatile BoardScope adminScope = BoardScope.ALL;
+        long lastChatNanos;
         final Map<String, BoardType> invitations = new ConcurrentHashMap<>();
 
         Peer(Socket socket) throws IOException {
@@ -493,6 +494,40 @@ public class Server {
         }
     }
 
+    private void chatError(Peer peer,String target,String message) {
+        peer.send("CHAT_ERROR|" + target + "|" + ChatMessage.encode(message));
+    }
+
+    private void handleChat(Peer peer,String[] fields) {
+        String targetName=Wire.field(fields,1);
+        if(fields.length!=3 || peer.name==null || peer.isAdmin || activePeers.get(peer.name)!=peer) {
+            chatError(peer,targetName,"Bạn cần đăng nhập tài khoản người chơi để trò chuyện");return;
+        }
+        if(peer.name.equals(targetName)) {
+            chatError(peer,targetName,"Không thể gửi tin nhắn cho chính mình");return;
+        }
+        final String text;
+        try { text=ChatMessage.decode(fields[2]); }
+        catch(IllegalArgumentException e){chatError(peer,targetName,"Tin nhắn không hợp lệ hoặc vượt quá 500 ký tự");return;}
+        Peer target=activePeers.get(targetName);
+        if(target==null || !target.isConnected() || target.isAdmin || !targetName.equals(target.name)) {
+            chatError(peer,targetName,"Người chơi đã ngoại tuyến. Tin nhắn chưa được gửi.");return;
+        }
+        long now=System.nanoTime();
+        if(peer.lastChatNanos!=0 && now-peer.lastChatNanos<250_000_000L) {
+            chatError(peer,targetName,"Bạn gửi quá nhanh. Hãy thử lại sau một chút.");return;
+        }
+        peer.lastChatNanos=now;
+        String packet="CHAT_MESSAGE|"+peer.name+"|"+targetName+"|"+System.currentTimeMillis()+"|"+ChatMessage.encode(text);
+        synchronized(target) {
+            if(activePeers.get(targetName)!=target || !targetName.equals(target.name) || !target.isConnected()) {
+                chatError(peer,targetName,"Người chơi đã ngoại tuyến. Tin nhắn chưa được gửi.");return;
+            }
+            target.send(packet);
+        }
+        peer.send(packet);
+    }
+
     private void handle(Peer peer, String line) {
         if (line.isEmpty()) return;
         String[] p = Wire.parse(line);
@@ -520,16 +555,22 @@ public class Server {
                     } else if (!markOnline(p[1])) {
                         peer.send("LOGIN_FAIL|Tài khoản đang đăng nhập ở nơi khác");
                     } else {
-                        peer.name = p[1];
-                        peer.isAdmin = DB.isAdmin(peer.name);
-                        activePeers.put(peer.name, peer);
-                        peer.send("LOGIN_OK|" + peer.name + "|" + (peer.isAdmin ? "ADMIN" : "USER"));
+                        synchronized(peer) {
+                            peer.name = p[1];
+                            peer.isAdmin = DB.isAdmin(peer.name);
+                            peer.send("LOGIN_OK|" + peer.name + "|" + (peer.isAdmin ? "ADMIN" : "USER"));
+                            activePeers.put(peer.name, peer);
+                        }
                         int sc = 0;
                         try { sc = DB.getScore(peer.name); } catch (Exception ignored) {}
                         if (!peer.isAdmin && !"admin".equalsIgnoreCase(peer.name)) {
                             broadcast("PLAYER_ONLINE|" + peer.name + "|" + sc, peer);
                         }
                     }
+                    break;
+                }
+                case "CHAT_SEND": {
+                    handleChat(peer,p);
                     break;
                 }
                 case "FIND_MATCH": {
@@ -673,14 +714,16 @@ public class Server {
                     Match m = peer.match;
                     if (m != null) m.handleDisconnect(peer);
                     peer.invitations.clear();
-                    String oldName = peer.name;
-                    if (oldName != null) {
-                        activePeers.remove(oldName);
-                        for (Peer other : activePeers.values()) other.invitations.remove(oldName);
-                        markOffline(oldName);
-                        peer.name = null;
-                        peer.isAdmin = false;
-                        broadcast("PLAYER_OFFLINE|" + oldName, peer);
+                    synchronized(peer) {
+                        String oldName = peer.name;
+                        if (oldName != null) {
+                            activePeers.remove(oldName,peer);
+                            for (Peer other : activePeers.values()) other.invitations.remove(oldName);
+                            markOffline(oldName);
+                            peer.name = null;
+                            peer.isAdmin = false;
+                            broadcast("PLAYER_OFFLINE|" + oldName, peer);
+                        }
                     }
                     peer.send("LOGOUT_OK");
                     break;
@@ -812,14 +855,16 @@ public class Server {
         Match m = peer.match;
         if (m != null) m.handleDisconnect(peer);
         peer.invitations.clear();
-        String name = peer.name;
-        if (name != null) {
-            activePeers.remove(name);
-            for (Peer other : activePeers.values()) other.invitations.remove(name);
-            markOffline(name);
-            peer.name = null;
-            peer.isAdmin = false;
-            broadcast("PLAYER_OFFLINE|" + name, peer);
+        synchronized(peer) {
+            String name = peer.name;
+            if (name != null) {
+                activePeers.remove(name,peer);
+                for (Peer other : activePeers.values()) other.invitations.remove(name);
+                markOffline(name);
+                peer.name = null;
+                peer.isAdmin = false;
+                broadcast("PLAYER_OFFLINE|" + name, peer);
+            }
         }
         peer.wire.close();
     }

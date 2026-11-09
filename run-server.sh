@@ -4,7 +4,7 @@
 #        ./run-server.sh 6000  (đổi sang cổng 6000)
 cd "$(dirname "$0")"
 if [ -z "$1" ]; then
-  mvn -q exec:java -Dexec.mainClass=domin.Server
+  mvn -q compile exec:java -Dexec.mainClass=domin.Server
 else
-  mvn -q exec:java -Dexec.mainClass=domin.Server -Dexec.args="$1"
+  mvn -q compile exec:java -Dexec.mainClass=domin.Server -Dexec.args="$1"
 fi

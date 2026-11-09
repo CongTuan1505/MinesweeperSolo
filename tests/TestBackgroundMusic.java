@@ -16,7 +16,8 @@ public class TestBackgroundMusic {
     }
     public static void main(String[] args)throws Exception {
         byte[] pcm=BackgroundMusic.synthesize();
-        check(pcm.length==(int)SoundEffects.FORMAT.getSampleRate()*20*2,"Twenty-second PCM music loop");
+        check(pcm.length==(int)(SoundEffects.FORMAT.getSampleRate()*(60.0/140)*4*16)*2,
+                "Sixteen-bar energetic arcade soundtrack");
         int peak=0;double square=0;
         for(int i=0;i<pcm.length;i+=2) {
             int sample=(short)((pcm[i]&255)|(pcm[i+1]<<8));

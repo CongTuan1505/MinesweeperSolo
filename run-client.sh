@@ -4,7 +4,7 @@
 #        ./run-client.sh 192.168.1.5     (kết nối sang máy khác trong cùng mạng LAN)
 cd "$(dirname "$0")"
 if [ -z "$1" ]; then
-  mvn -q exec:java -Dexec.mainClass=domin.Client
+  mvn -q compile exec:java -Dexec.mainClass=domin.Client
 else
-  mvn -q exec:java -Dexec.mainClass=domin.Client -Dexec.args="$1"
+  mvn -q compile exec:java -Dexec.mainClass=domin.Client -Dexec.args="$1"
 fi

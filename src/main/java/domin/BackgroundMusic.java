@@ -3,7 +3,7 @@ package domin;
 import java.util.concurrent.*;
 import javax.sound.sampled.*;
 
-/** Original quiet ambient loop, played separately so game effects never restart the music. */
+/** Original restrained electronic puzzle-game loop, played separately so game effects never restart the music. */
 final class BackgroundMusic implements AutoCloseable {
     private final SoundEffects.Backend backend;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
@@ -77,21 +77,42 @@ final class BackgroundMusic implements AutoCloseable {
         worker.shutdownNow();
     }
 
-    /** Eight bars at 96 BPM: soft chords, plucked arpeggios and a restrained bass line. */
+    /** Sixteen bars at 140 BPM: energetic arcade lead, octave bass and four-on-the-floor drums. */
     static byte[] synthesize() {
         final int rate = (int)SoundEffects.FORMAT.getSampleRate();
-        final double beat = 60.0 / 96, bar = beat * 4;
-        double[] mix = new double[(int)(rate * bar * 8)];
-        int[][] chords = {{48,55,59,64},{45,52,55,60},{41,48,52,57},{43,50,55,59}};
-        int[] pattern = {0,2,1,3,2,1,3,2};
-        for (int b=0;b<8;b++) {
-            int[] chord = chords[b%chords.length];
+        final double beat = 60.0 / 140, bar = beat * 4;
+        double[] mix = new double[(int)(rate * bar * 16)];
+        int[][] chords = {{50,57,60,64},{46,53,57,60},{43,50,53,57},{45,52,57,62}};
+        int[][] motifs = {
+            {74,77,81,77,76,74,69,72},
+            {70,74,77,74,72,69,65,69},
+            {67,70,74,77,74,72,70,69},
+            {69,73,76,81,79,76,73,71}
+        };
+        java.util.Random noise = new java.util.Random(140);
+        for (int b=0;b<16;b++) {
+            int section = b % 4;
+            int[] chord = chords[section];
             double start = b*bar;
-            for (int note : chord) pad(mix,rate,start,bar,note,.012);
-            for (int step=0;step<8;step++)
-                pluck(mix,rate,start+step*beat/2,1.0,chord[pattern[step]]+24,.035);
-            pluck(mix,rate,start,beat*2,chord[0]-12,.035);
-            pluck(mix,rate,start+beat*2,beat*2,chord[0]-12,.025);
+            for (int note : chord) pad(mix,rate,start,bar,note,.006);
+            for (int step=0;step<8;step++) {
+                double at = start + step*beat/2;
+                int note = motifs[section][step];
+                // The second half answers the motif without a tiring high-register loop.
+                if (note > 0) synth(mix,rate,at,beat*.44,note + (b>=8 && step==6 ? 12 : 0),.038,false);
+                synth(mix,rate,at,beat*.38,chord[0]-(step%2==0?12:0),.038,true);
+                percussion(mix,rate,at,step%2==0 ? .006 : .009,2,noise);
+                if (b%4==3 && step>=6)
+                    percussion(mix,rate,at+beat/4,.006,2,noise);
+            }
+            for (int kick=0;kick<4;kick++)
+                percussion(mix,rate,start+beat*kick,.052,0,noise);
+            percussion(mix,rate,start+beat,.023,1,noise);
+            percussion(mix,rate,start+beat*3,.023,1,noise);
+            if (b%4==3) {
+                percussion(mix,rate,start+beat*3.5,.015,1,noise);
+                percussion(mix,rate,start+beat*3.75,.012,1,noise);
+            }
         }
         byte[] data = new byte[mix.length*2];
         for (int i=0;i<mix.length;i++) {
@@ -107,18 +128,38 @@ final class BackgroundMusic implements AutoCloseable {
         for(int i=0;i<length;i++) {
             double t=i/(double)rate;
             double envelope=Math.sin(Math.PI*t/duration);
-            double tone=Math.sin(2*Math.PI*hz*t)*.8+Math.sin(2*Math.PI*hz*1.002*t)*.2;
-            mix[(first+i)%mix.length]+=tone*envelope*envelope*volume;
+            mix[(first+i)%mix.length]+=Math.sin(2*Math.PI*hz*t)*envelope*envelope*volume;
         }
     }
-    private static void pluck(double[] mix,int rate,double start,double duration,int midi,double volume) {
+    private static void synth(double[] mix,int rate,double start,double duration,int midi,double volume,boolean bass) {
         double hz=frequency(midi);
         int first=(int)(start*rate),length=(int)(duration*rate);
         for(int i=0;i<length;i++) {
+            double t=i/(double)rate,phase=2*Math.PI*hz*t;
+            double envelope=Math.min(1,t/.008)*Math.exp(-t*(bass?5:7))*Math.min(1,(duration-t)/.035);
+            // A few harmonics suggest classic game synths without harsh square-wave edges.
+            double tone = bass ? Math.sin(phase)*.85+Math.sin(2*phase)*.15
+                    : Math.sin(phase)*.64+Math.sin(2*phase)*.16+Math.sin(3*phase)*.14+Math.sin(5*phase)*.06;
+            mix[(first+i)%mix.length]+=tone*envelope*volume;
+        }
+    }
+    private static void percussion(double[] mix,int rate,double start,double volume,int kind,java.util.Random noise) {
+        double duration=kind==0?.16:kind==1?.11:.045;
+        int first=(int)(start*rate),length=(int)(duration*rate);
+        double previous=0;
+        for(int i=0;i<length;i++) {
             double t=i/(double)rate;
-            double envelope=Math.min(1,t/.012)*Math.exp(-t*5)*Math.min(1,(duration-t)/.04);
-            double tone=Math.sin(2*Math.PI*hz*t)*.9+Math.sin(4*Math.PI*hz*t)*.1;
-            // Wrap ringing notes across the end of the loop for a continuous transition.
+            double envelope=Math.min(1,t/.003)*Math.exp(-t*(kind==0?24:kind==1?35:75))
+                    *Math.min(1,(duration-t)/.012);
+            double tone;
+            if (kind==0) {
+                double phase=2*Math.PI*(45*t+65*(1-Math.exp(-35*t))/35);
+                tone=Math.sin(phase);
+            } else {
+                double sample=noise.nextDouble()*2-1;
+                tone=kind==2 ? (sample-previous)*.5 : sample*.7+Math.sin(2*Math.PI*180*t)*.3;
+                previous=sample;
+            }
             mix[(first+i)%mix.length]+=tone*envelope*volume;
         }
     }

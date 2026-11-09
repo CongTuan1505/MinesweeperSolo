@@ -193,6 +193,9 @@ public class TestBoardModes {
                     check(sent.contains("GET_PROFILE|16x16") && sent.contains("GET_LEADERBOARD|16x30"),"Selectors request correct mode");
                     home.setLeaderboard("test~99~33~0~0");
                     check(((JLabel)badge.get(home)).getText().equals("Top 2"),"Other leaderboard cannot overwrite profile rank");
+                    home.setProfile(0,0,0,0,0);
+                    check(((JLabel)badge.get(home)).getText().equals("Chưa xếp hạng"),
+                            "Zero rank clears previous mode's rank");
                     Field history = HomeScreen.class.getDeclaredField("historyRowsContainer");
                     history.setAccessible(true);
                     for (BoardType type : BoardType.values()) {

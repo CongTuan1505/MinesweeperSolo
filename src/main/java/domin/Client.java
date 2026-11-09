@@ -35,6 +35,7 @@ public class Client {
     private final int port;
     private String name;
     private String currentOpponent;
+    private ChatSession chatSession;
     private int matchTimeLimit;
     private int lastWarningSecond = -1;
     private boolean isLoggingOut = false;
@@ -119,6 +120,7 @@ public class Client {
         adminScreen = null;
         spectatorScreen = null;
         name = null;
+        chatSession = null;
         isAdmin = false;
         adminScopeId = "ALL";
         isLoggingOut = false;
@@ -137,6 +139,7 @@ public class Client {
         if (adminScreen != null) adminScreen.stopTimer();
         adminScreen = null;
         spectatorScreen = null;
+        if(chatSession==null)chatSession=new ChatSession(name);
         homeScreen = new HomeScreen(name, new HomeScreen.HomeCallback() {
             @Override
             public void send(String message) {
@@ -145,7 +148,7 @@ public class Client {
                 }
                 wire.send(message);
             }
-        });
+        },chatSession);
         loginScreen = null;
         gameScreen = null;
         if (isAdmin) {
@@ -287,6 +290,7 @@ public class Client {
             // ---- Login/Register/Logout ----
             case "LOGIN_OK": {
                 name = Wire.field(p, 1);
+                chatSession = new ChatSession(name);
                 String role = Wire.field(p, 2);
                 isAdmin = "ADMIN".equalsIgnoreCase(role) || "admin".equalsIgnoreCase(name);
                 if (isAdmin) {
@@ -304,6 +308,13 @@ public class Client {
             case "REGISTER_FAIL":
             case "ERROR": {
                 String msg = p.length > 1 ? p[1] : "Có lỗi xảy ra";
+                if("ERROR".equals(p[0]) && chatSession!=null){
+                    java.util.Set<String> failed=chatSession.handleServerError(msg);
+                    if(!failed.isEmpty()){
+                        if(homeScreen!=null)for(String peer:failed)homeScreen.chatError(peer,chatSession.error(peer));
+                        break;
+                    }
+                }
                 if (loginScreen != null) {
                     loginScreen.setStatus(msg);
                 } else if (homeScreen != null) {
@@ -388,6 +399,32 @@ public class Client {
             case "HISTORY": {
                 if (homeScreen != null) {
                     homeScreen.setHistory(p.length > 1 ? p[1] : "");
+                }
+                break;
+            }
+            case "CHAT_MESSAGE": {
+                if(name!=null && chatSession!=null && p.length==5) {
+                    try {
+                        String text=ChatMessage.decode(p[4]);
+                        boolean incoming=name.equals(p[2])&&!name.equals(p[1]);
+                        boolean visible=incoming&&homeScreen!=null&&homeScreen.isChatVisible(p[1]);
+                        String peer=chatSession.receive(p[1],p[2],text,Long.parseLong(p[3]),visible);
+                        if(homeScreen!=null)homeScreen.chatUpdated(peer);
+                        if(incoming) {
+                            SoundEffects.shared().play(SoundEffects.Cue.MESSAGE);
+                            if(!visible && homeScreen!=null)homeScreen.showNotification("Tin nhắn mới từ "+peer);
+                        }
+                    }catch(IllegalArgumentException ignored){}
+                }
+                break;
+            }
+            case "CHAT_ERROR": {
+                if(chatSession!=null && p.length==3) {
+                    try {
+                        String message=ChatMessage.decode(p[2]);
+                        chatSession.failed(p[1],message);
+                        if(homeScreen!=null)homeScreen.chatError(p[1],message);
+                    }catch(IllegalArgumentException ignored){}
                 }
                 break;
             }

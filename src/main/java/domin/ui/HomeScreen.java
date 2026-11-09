@@ -1,6 +1,7 @@
 package domin.ui;
 
 import domin.BoardType;
+import domin.ChatSession;
 import javax.swing.JComboBox;
 
 import java.awt.BasicStroke;
@@ -98,6 +99,7 @@ public class HomeScreen extends JPanel {
 
     private final String username;
     private final HomeCallback callback;
+    private final ChatSession chatSession;
 
     private int score = 0;
     private int wins = 0;
@@ -125,10 +127,12 @@ public class HomeScreen extends JPanel {
 
     // UI References — Left Identity
     private JPanel avatarFramePanel;
+    private JPanel profileCardPanel;
     private JLabel playerNameLabel;
     private JLabel rankBadgeLabel;
     private JLabel profileScoreLabel;
     private JLabel winRateLabel;
+    private javax.swing.JProgressBar profileWinRateBar;
     private JLabel statWinsVal, statLossesVal, statDrawsVal, statTotalVal;
 
     // UI References — Center Stage
@@ -150,9 +154,13 @@ public class HomeScreen extends JPanel {
     // UI References — Right Social Panel
     private JPanel onlineListPanel;
     private JLabel onlineCountBadge;
+    private CardLayout socialLayout;
+    private JPanel socialCards;
+    private ChatPanel chatPanel;
 
     // UI References — Secondary Views
     private JPanel leaderboardRowsContainer;
+    private RankingPanel rankingPanel;
     private JPanel historyRowsContainer;
     private JLabel historySummaryLabel;
 
@@ -165,6 +173,11 @@ public class HomeScreen extends JPanel {
     // ================================================================
 
     public HomeScreen(String username, HomeCallback callback) {
+        this(username,callback,new ChatSession(username));
+    }
+
+    public HomeScreen(String username, HomeCallback callback,ChatSession chatSession) {
+        this.chatSession=chatSession;
         this.username = username;
         this.callback = callback;
         loadLogo();
@@ -473,7 +486,7 @@ public class HomeScreen extends JPanel {
         ));
 
         // Header with user info
-        JLabel titleItem = new JLabel("  " + username + "  (" + (myRank > 0 ? "Top " + myRank : "Top 1") + ")");
+        JLabel titleItem = new JLabel("  " + username + "  (" + (myRank > 0 ? "Top " + myRank : "Chưa xếp hạng") + ")");
         titleItem.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 11));
         titleItem.setForeground(Theme.ACCENT_CYAN);
         titleItem.setBorder(new EmptyBorder(6, 12, 6, 12));
@@ -570,137 +583,120 @@ public class HomeScreen extends JPanel {
         return ((BoardType) leaderboardBoardSelector.getSelectedItem()).id;
     }
 
+    private Color profileAccent() { return RankingPanel.medal(myRank); }
+    private Color profileTint(int alpha) {
+        Color accent=profileAccent();
+        return new Color(accent.getRed(),accent.getGreen(),accent.getBlue(),alpha);
+    }
+
     private JPanel buildLeftPlayerArea() {
         JPanel leftPanel = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                // Dark glass translucent panel
-                g2.setColor(new Color(0x0C, 0x12, 0x24, 190));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), CORNER_RADIUS, CORNER_RADIUS);
-                // Subtle border
-                g2.setColor(new Color(0x1F, 0x2A, 0x40));
-                g2.setStroke(new BasicStroke(1.2f));
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, CORNER_RADIUS, CORNER_RADIUS);
-                g2.dispose();
+            @Override protected void paintComponent(Graphics graphics) {
+                Graphics2D g = RankingPanel.quality(graphics);
+                boolean podium=myRank>=1&&myRank<=3;
+                Color accent=profileAccent();
+                Color top=podium?new Color(11+accent.getRed()/9,18+accent.getGreen()/12,25+accent.getBlue()/12):new Color(18,35,57);
+                g.setPaint(new GradientPaint(0,0,top,getWidth(),310,new Color(11,18,33)));
+                g.fillRoundRect(0,0,getWidth(),getHeight(),18,18);
+                g.setColor(podium?profileTint(90):new Color(39,66,89));
+                g.drawRoundRect(0,0,getWidth()-1,getHeight()-1,18,18);
+                g.setColor(profileTint(45));
+                g.fillRoundRect(18,0,getWidth()-36,3,3,3);
+                g.dispose();
             }
         };
-        leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
+        profileCardPanel=leftPanel;
         leftPanel.setOpaque(false);
-        leftPanel.setPreferredSize(new Dimension(LEFT_PANEL_WIDTH, 0));
-        leftPanel.setBorder(new EmptyBorder(22, 18, 22, 18));
+        leftPanel.setLayout(new BoxLayout(leftPanel,BoxLayout.Y_AXIS));
+        leftPanel.setPreferredSize(new Dimension(LEFT_PANEL_WIDTH,0));
+        leftPanel.setBorder(new EmptyBorder(20,18,18,18));
 
-        // --- Large Gaming Avatar with Neon Ring ---
+        JLabel section = RankingPanel.label("HỒ SƠ CỦA BẠN",10,Theme.TEXT_SECONDARY);
+        section.setAlignmentX(Component.CENTER_ALIGNMENT);
+        section.setFont(section.getFont().deriveFont(Font.BOLD));
+        leftPanel.add(section);leftPanel.add(Box.createVerticalStrut(16));
         avatarFramePanel = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                super.paintComponent(g);
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                int size = 96;
-                int x = (getWidth() - size) / 2;
-                int y = (getHeight() - size) / 2;
-
-                // Outer cyan glow aura
-                g2.setColor(new Color(Theme.ACCENT_CYAN.getRed(), Theme.ACCENT_CYAN.getGreen(), Theme.ACCENT_CYAN.getBlue(), 35));
-                g2.fillOval(x - 6, y - 6, size + 12, size + 12);
-
-                if (customAvatar != null) {
-                    Shape oldClip = g2.getClip();
-                    g2.setClip(new Ellipse2D.Double(x, y, size, size));
-                    g2.drawImage(customAvatar, x, y, size, size, null);
-                    g2.setClip(oldClip);
-                } else {
-                    GradientPaint gp = new GradientPaint(x, y, Theme.PRIMARY, x + size, y + size, Theme.ACCENT_CYAN);
-                    g2.setPaint(gp);
-                    g2.fillOval(x, y, size, size);
-                    g2.setColor(Color.WHITE);
-                    g2.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 40));
-                    String init = (username != null && !username.isEmpty()) ? username.substring(0, 1).toUpperCase() : "P";
-                    FontMetrics fm = g2.getFontMetrics();
-                    g2.drawString(init, x + (size - fm.stringWidth(init)) / 2, y + (size - fm.getHeight()) / 2 + fm.getAscent());
-                }
-
-                // Dual tactical ring
-                g2.setColor(new Color(Theme.PRIMARY.getRed(), Theme.PRIMARY.getGreen(), Theme.PRIMARY.getBlue(), 160));
-                g2.setStroke(new BasicStroke(3f));
-                g2.drawOval(x - 2, y - 2, size + 4, size + 4);
-
-                g2.setColor(Theme.ACCENT_CYAN);
-                g2.setStroke(new BasicStroke(1.5f));
-                g2.drawOval(x, y, size, size);
-
-                g2.dispose();
+            @Override protected void paintComponent(Graphics graphics) {
+                Graphics2D g = RankingPanel.quality(graphics);
+                int size=88,x=(getWidth()-size)/2,y=12;
+                g.setPaint(new RadialGradientPaint(x+size/2f,y+size/2f,62,
+                        new float[]{0,1},new Color[]{profileTint(45),profileTint(0)}));
+                g.fillOval(x-16,y-16,size+32,size+32);
+                RankingPanel.drawAvatar(g,username,x,y,size,profileAccent(),customAvatar);
+                g.setColor(new Color(34,55,77));g.setStroke(new BasicStroke(3f));
+                g.drawArc(x-7,y-7,size+14,size+14,90,-360);
+                int total=wins+losses+draws;
+                g.setColor(profileAccent());
+                if(total>0)g.drawArc(x-7,y-7,size+14,size+14,90,-wins*360/total);
+                g.dispose();
             }
         };
-        avatarFramePanel.setPreferredSize(new Dimension(110, 110));
-        avatarFramePanel.setMaximumSize(new Dimension(110, 110));
         avatarFramePanel.setOpaque(false);
+        avatarFramePanel.setPreferredSize(new Dimension(120,116));
+        avatarFramePanel.setMaximumSize(new Dimension(120,116));
         avatarFramePanel.setAlignmentX(Component.CENTER_ALIGNMENT);
         avatarFramePanel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         avatarFramePanel.setToolTipText("Nhấp để đổi ảnh đại diện");
-        avatarFramePanel.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                chooseAndUploadAvatar();
-            }
+        avatarFramePanel.addMouseListener(new MouseAdapter(){
+            @Override public void mouseClicked(MouseEvent e){chooseAndUploadAvatar();}
         });
-        leftPanel.add(avatarFramePanel);
-        leftPanel.add(Box.createVerticalStrut(12));
+        leftPanel.add(avatarFramePanel);leftPanel.add(Box.createVerticalStrut(8));
 
-        // Username
         playerNameLabel = new JLabel(username.toUpperCase());
-        playerNameLabel.setFont(new Font(Theme.TITLE_FONT.getFamily(), Font.BOLD, 18));
+        playerNameLabel.setFont(Theme.TITLE_FONT.deriveFont(Font.BOLD,username.length()>14?16f:21f));
         playerNameLabel.setForeground(Theme.TEXT_PRIMARY);
-        playerNameLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        leftPanel.add(playerNameLabel);
-        leftPanel.add(Box.createVerticalStrut(4));
-
-        // Rank Badge Pill (no emoji to prevent square tofu)
-        rankBadgeLabel = new JLabel(myRank > 0 ? "Top " + myRank : "Top 1");
-        rankBadgeLabel.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 12));
+        playerNameLabel.setToolTipText(username);playerNameLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        leftPanel.add(playerNameLabel);leftPanel.add(Box.createVerticalStrut(8));
+        rankBadgeLabel = new JLabel(myRank>0?"Top "+myRank:"Chưa xếp hạng") {
+            @Override protected void paintComponent(Graphics graphics){
+                Graphics2D g=RankingPanel.quality(graphics);
+                g.setColor(profileTint(18));g.fillRoundRect(0,0,getWidth(),getHeight(),14,14);
+                g.dispose();super.paintComponent(graphics);
+            }
+        };
+        rankBadgeLabel.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD,12f));
         rankBadgeLabel.setForeground(Theme.ACCENT_CYAN);
-        rankBadgeLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        leftPanel.add(rankBadgeLabel);
-        leftPanel.add(Box.createVerticalStrut(10));
+        rankBadgeLabel.setBorder(new EmptyBorder(5,14,5,14));
+        rankBadgeLabel.setAlignmentX(Component.CENTER_ALIGNMENT);leftPanel.add(rankBadgeLabel);
+        leftPanel.add(Box.createVerticalStrut(18));
 
         profileBoardSelector = createBoardSelector();
-        profileBoardSelector.setMaximumSize(new Dimension(224, 48));
-        profileBoardSelector.addActionListener(e -> callback.send("GET_PROFILE|" + getProfileBoardId()));
-        leftPanel.add(profileBoardSelector);
-        leftPanel.add(Box.createVerticalStrut(10));
+        profileBoardSelector.setMaximumSize(new Dimension(224,48));
+        profileBoardSelector.addActionListener(e -> callback.send("GET_PROFILE|"+getProfileBoardId()));
+        leftPanel.add(profileBoardSelector);leftPanel.add(Box.createVerticalStrut(14));
 
-        // Score display
-        profileScoreLabel = new JLabel("0 ĐIỂM");
-        profileScoreLabel.setFont(new Font(Theme.STAT_FONT.getFamily(), Font.BOLD, 16));
-        profileScoreLabel.setForeground(Theme.WARNING);
+        JPanel scoreCard=RankingPanel.surface(new Color(66,64,56));
+        scoreCard.setLayout(new BoxLayout(scoreCard,BoxLayout.Y_AXIS));
+        scoreCard.setBorder(new EmptyBorder(12,4,12,4));
+        scoreCard.setMaximumSize(new Dimension(224,83));
+        JLabel scoreTitle=RankingPanel.label("ĐIỂM XẾP HẠNG",9,Theme.TEXT_SECONDARY);
+        scoreTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        profileScoreLabel=new JLabel("0 ĐIỂM");
+        profileScoreLabel.setFont(Theme.STAT_FONT.deriveFont(Font.BOLD,26f));
+        profileScoreLabel.setForeground(new Color(250,200,94));
         profileScoreLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        leftPanel.add(profileScoreLabel);
-        leftPanel.add(Box.createVerticalStrut(14));
+        scoreCard.add(scoreTitle);scoreCard.add(Box.createVerticalStrut(4));scoreCard.add(profileScoreLabel);
+        leftPanel.add(scoreCard);leftPanel.add(Box.createVerticalStrut(12));
 
-        // Quick Stats Sub-grid (Matches, Wins, Losses, Draws in Vietnamese)
-        JPanel statsBox = new JPanel(new GridLayout(2, 2, 8, 8));
-        statsBox.setOpaque(false);
-        statsBox.setMaximumSize(new Dimension(LEFT_PANEL_WIDTH - 36, 100));
+        JPanel statsBox=new JPanel(new GridLayout(2,2,8,8));statsBox.setOpaque(false);
+        statsBox.setMaximumSize(new Dimension(224,120));
+        statWinsVal=createStatTile(statsBox,"THẮNG","0",Theme.SUCCESS);
+        statLossesVal=createStatTile(statsBox,"THUA","0",new Color(248,113,113));
+        statDrawsVal=createStatTile(statsBox,"HÒA","0",new Color(167,139,250));
+        statTotalVal=createStatTile(statsBox,"SỐ TRẬN","0",Theme.TEXT_PRIMARY);
+        leftPanel.add(statsBox);leftPanel.add(Box.createVerticalStrut(16));
 
-        statWinsVal = createStatTile(statsBox, "THẮNG", "0", Theme.SUCCESS);
-        statLossesVal = createStatTile(statsBox, "THUA", "0", Theme.DANGER);
-        statDrawsVal = createStatTile(statsBox, "HÒA", "0", Theme.WARNING);
-        statTotalVal = createStatTile(statsBox, "SỐ TRẬN", "0", Theme.TEXT_PRIMARY);
-
-        leftPanel.add(statsBox);
-        leftPanel.add(Box.createVerticalStrut(12));
-
-        // Win rate label
-        winRateLabel = new JLabel("TỈ LỆ THẮNG: 0%");
-        winRateLabel.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 11));
-        winRateLabel.setForeground(Theme.TEXT_SECONDARY);
-        winRateLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        leftPanel.add(winRateLabel);
-
-        leftPanel.add(Box.createVerticalGlue());
-
+        winRateLabel=new JLabel("TỈ LỆ THẮNG: 0%");
+        winRateLabel.setForeground(Theme.TEXT_SECONDARY);winRateLabel.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD));
+        winRateLabel.setAlignmentX(Component.CENTER_ALIGNMENT);leftPanel.add(winRateLabel);
+        leftPanel.add(Box.createVerticalStrut(8));
+        profileWinRateBar=new javax.swing.JProgressBar(0,100);
+        profileWinRateBar.setUI(new javax.swing.plaf.basic.BasicProgressBarUI());
+        profileWinRateBar.setBorderPainted(false);profileWinRateBar.setForeground(Theme.ACCENT_CYAN);
+        profileWinRateBar.setBackground(new Color(30,47,68));
+        profileWinRateBar.setMaximumSize(new Dimension(224,5));
+        profileWinRateBar.setPreferredSize(new Dimension(224,5));
+        leftPanel.add(profileWinRateBar);leftPanel.add(Box.createVerticalGlue());
         return leftPanel;
     }
 
@@ -719,15 +715,15 @@ public class HomeScreen extends JPanel {
         };
         tile.setOpaque(false);
         tile.setLayout(new BoxLayout(tile, BoxLayout.Y_AXIS));
-        tile.setBorder(new EmptyBorder(6, 6, 6, 6));
+        tile.setBorder(new EmptyBorder(8, 8, 8, 8));
 
         JLabel vLbl = new JLabel(value, SwingConstants.CENTER);
-        vLbl.setFont(new Font(Theme.STAT_FONT.getFamily(), Font.BOLD, 15));
+        vLbl.setFont(new Font(Theme.STAT_FONT.getFamily(), Font.BOLD, 21));
         vLbl.setForeground(color);
         vLbl.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         JLabel tLbl = new JLabel(label, SwingConstants.CENTER);
-        tLbl.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.PLAIN, 8));
+        tLbl.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 9));
         tLbl.setForeground(Theme.TEXT_MUTED);
         tLbl.setAlignmentX(Component.CENTER_ALIGNMENT);
 
@@ -895,6 +891,10 @@ public class HomeScreen extends JPanel {
         rightPanel.setPreferredSize(new Dimension(RIGHT_PANEL_WIDTH, 0));
         rightPanel.setBorder(new EmptyBorder(18, 16, 18, 16));
 
+        socialLayout=new CardLayout();
+        socialCards=new JPanel(socialLayout);socialCards.setOpaque(false);
+        JPanel onlineCard=new JPanel(new BorderLayout());onlineCard.setOpaque(false);
+
         // Header
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
@@ -910,7 +910,7 @@ public class HomeScreen extends JPanel {
 
         header.add(title, BorderLayout.WEST);
         header.add(onlineCountBadge, BorderLayout.EAST);
-        rightPanel.add(header, BorderLayout.NORTH);
+        onlineCard.add(header, BorderLayout.NORTH);
 
         // Player list container
         onlineListPanel = new JPanel();
@@ -925,15 +925,52 @@ public class HomeScreen extends JPanel {
         scroll.setBorder(null);
         styleScrollBar(scroll.getVerticalScrollBar());
 
-        rightPanel.add(scroll, BorderLayout.CENTER);
-
+        onlineCard.add(scroll, BorderLayout.CENTER);
+        chatPanel=new ChatPanel(username,chatSession,callback::send,this::chatPresence,this::closeChat);
+        socialCards.add(onlineCard,"ONLINE");socialCards.add(chatPanel,"CHAT");
+        rightPanel.add(socialCards,BorderLayout.CENTER);
+        socialLayout.show(socialCards,chatSession.activePeer()==null?"ONLINE":"CHAT");
+        if(chatSession.activePeer()!=null)chatPanel.refresh(false);
         return rightPanel;
+    }
+
+    private String chatPresence(String peer) {
+        for(String[] player:onlinePlayers)
+            if(player[0].equals(peer))return player.length>2?player[2]:"ONLINE";
+        return "OFFLINE";
+    }
+
+    public void openChat(String peer) {
+        chatSession.open(peer);
+        socialLayout.show(socialCards,"CHAT");
+        chatPanel.showError(" ");chatPanel.refresh(true);
+        refreshOnlineList();
+    }
+
+    private void closeChat() {
+        chatSession.back();socialLayout.show(socialCards,"ONLINE");refreshOnlineList();
+    }
+
+    public boolean isChatVisible(String peer) {
+        return TAB_LOBBY.equals(currentTab) && peer!=null && peer.equals(chatSession.activePeer());
+    }
+
+    public void chatUpdated(String peer) {
+        refreshOnlineList();
+        if(peer.equals(chatSession.activePeer())) {
+            chatPanel.showError(" ");chatPanel.refresh(isChatVisible(peer));
+        }
+    }
+
+    public void chatError(String peer,String message) {
+        if(peer.equals(chatSession.activePeer()))chatPanel.showError(message);
+        else showNotification(message);
     }
 
     private JPanel createOnlinePlayerRow(final String name, int pScore, String status) {
         final boolean isMe = name.equals(username);
         final boolean isOnline = "ONLINE".equalsIgnoreCase(status);
-        final Color statusColor = isOnline ? Theme.SUCCESS : Theme.WARNING;
+        final Color statusColor = "OFFLINE".equals(status) ? Theme.TEXT_MUTED : isOnline ? Theme.SUCCESS : Theme.WARNING;
 
         final JPanel row = new JPanel(new BorderLayout(8, 0)) {
             private boolean hovered = false;
@@ -947,7 +984,7 @@ public class HomeScreen extends JPanel {
                     g2.setColor(new Color(0x10, 0x17, 0x2C, 160));
                 }
                 g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
-                if (!isMe && isOnline && name.equals(selectedPlayerToChallenge)) {
+                if (!isMe && name.equals(selectedPlayerToChallenge)) {
                     g2.setColor(Theme.ACCENT_CYAN);
                     g2.setStroke(new BasicStroke(1.2f));
                     g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
@@ -958,13 +995,15 @@ public class HomeScreen extends JPanel {
         };
         row.setOpaque(false);
         row.setBorder(new EmptyBorder(8, 10, 8, 10));
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+        int rowHeight=name.equals(selectedPlayerToChallenge)?82:52;
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE,rowHeight));
+        row.setPreferredSize(new Dimension(0,rowHeight));
 
         // Click listener on row to select player and show challenge button
         MouseAdapter selectRowAdapter = new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (!isMe && isOnline) {
+                if (!isMe) {
                     if (name.equals(selectedPlayerToChallenge)) {
                         selectedPlayerToChallenge = null;
                     } else {
@@ -983,7 +1022,7 @@ public class HomeScreen extends JPanel {
             }
         };
 
-        if (!isMe && isOnline) {
+        if (!isMe) {
             row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         }
         row.addMouseListener(selectRowAdapter);
@@ -1020,9 +1059,10 @@ public class HomeScreen extends JPanel {
         nameLbl.setForeground(isMe ? Theme.ACCENT_CYAN : Theme.TEXT_PRIMARY);
         nameLbl.addMouseListener(selectRowAdapter);
 
-        JLabel scLbl = new JLabel(pScore + " điểm");
+        int unread=chatSession.unread(name);
+        JLabel scLbl = new JLabel((unread>0 ? unread+" tin mới" : "OFFLINE".equals(status)?"Trò chuyện riêng":pScore+" điểm"));
         scLbl.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.PLAIN, 10));
-        scLbl.setForeground(Theme.WARNING);
+        scLbl.setForeground(unread>0?Theme.ACCENT_CYAN:Theme.WARNING);
         scLbl.addMouseListener(selectRowAdapter);
 
         nameCol.add(nameLbl);
@@ -1032,44 +1072,30 @@ public class HomeScreen extends JPanel {
         left.add(nameCol);
         row.add(left, BorderLayout.CENTER);
 
-        // Right Action: Status label or Challenge button
-        JPanel rightBox = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 2));
-        rightBox.setOpaque(false);
-
-        if (isMe) {
-            JLabel youTag = new JLabel("Bạn");
-            youTag.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 11));
-            youTag.setForeground(Theme.ACCENT_CYAN);
-            rightBox.add(youTag);
-        } else if (isOnline) {
-            if (name.equals(selectedPlayerToChallenge)) {
-                JButton chBtn = createPrimarySmallButton("Thách đấu");
-                chBtn.setToolTipText("Gửi lời thách đấu tới " + name);
-                chBtn.setPreferredSize(new Dimension(86, 26));
-                chBtn.addActionListener(new ActionListener() {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        BoardType type = BoardSelector.chooseBoard(HomeScreen.this, name,
-                                (BoardType) matchBoardSelector.getSelectedItem());
-                        if (type == null) return;
-                        callback.send("CHALLENGE|" + name + "|" + type.id);
-                        selectedPlayerToChallenge = null;
-                        refreshOnlineList();
-                    }
-                });
-                rightBox.add(chBtn);
-            } else {
-                JLabel onlineTag = new JLabel("Online");
-                onlineTag.setFont(new Font(Theme.BODY_FONT.getFamily(), Font.BOLD, 12));
-                onlineTag.setForeground(Theme.SUCCESS);
-                onlineTag.addMouseListener(selectRowAdapter);
-                rightBox.add(onlineTag);
-            }
+        JPanel rightBox = new JPanel();
+        rightBox.setLayout(new BoxLayout(rightBox,BoxLayout.Y_AXIS));rightBox.setOpaque(false);
+        if(isMe) {
+            JLabel tag=new JLabel("Bạn");tag.setForeground(Theme.ACCENT_CYAN);rightBox.add(tag);
+        } else if(name.equals(selectedPlayerToChallenge)) {
+            JButton challenge=createPrimarySmallButton("Thách đấu");
+            challenge.setPreferredSize(new Dimension(90,26));challenge.setMaximumSize(new Dimension(90,26));
+            challenge.setEnabled(isOnline);
+            challenge.setToolTipText(isOnline?"Chọn bàn để thách đấu":"Người chơi hiện không sẵn sàng thách đấu");
+            challenge.addActionListener(e -> {
+                BoardType type=BoardSelector.chooseBoard(HomeScreen.this,name,(BoardType)matchBoardSelector.getSelectedItem());
+                if(type==null)return;
+                callback.send("CHALLENGE|"+name+"|"+type.id);
+                selectedPlayerToChallenge=null;refreshOnlineList();
+            });
+            JButton chat=createOutlineButton("Trò chuyện");
+            chat.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD,11f));
+            chat.setPreferredSize(new Dimension(90,26));chat.setMaximumSize(new Dimension(90,26));
+            chat.setBorder(new EmptyBorder(4,7,4,7));chat.addActionListener(e -> openChat(name));
+            rightBox.add(challenge);rightBox.add(Box.createVerticalStrut(5));rightBox.add(chat);
         } else {
-            JLabel inBattleTag = new JLabel("Trong trận");
-            inBattleTag.setFont(new Font(Theme.BODY_FONT.getFamily(), Font.BOLD, 12));
-            inBattleTag.setForeground(Theme.WARNING);
-            rightBox.add(inBattleTag);
+            JLabel tag=new JLabel("OFFLINE".equals(status)?"Ngoại tuyến":isOnline?"Online":"Trong trận");
+            tag.setFont(Theme.SMALL_FONT.deriveFont(Font.BOLD));tag.setForeground(statusColor);
+            tag.addMouseListener(selectRowAdapter);rightBox.add(tag);
         }
 
         row.add(rightBox, BorderLayout.EAST);
@@ -1178,155 +1204,10 @@ public class HomeScreen extends JPanel {
     // ================================================================
 
     private JPanel buildLeaderboardView() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setOpaque(false);
-        panel.setBorder(new EmptyBorder(20, 40, 20, 40));
-
-        // Header
-        JPanel top = new JPanel(new BorderLayout());
-        top.setOpaque(false);
-        top.setBorder(new EmptyBorder(0, 0, 16, 0));
-
-        JPanel titleBlock = new JPanel();
-        titleBlock.setLayout(new BoxLayout(titleBlock, BoxLayout.Y_AXIS));
-        titleBlock.setOpaque(false);
-
-        JLabel title = new JLabel("BẢNG XẾP HẠNG CAO THỦ");
-        title.setFont(new Font(Theme.TITLE_FONT.getFamily(), Font.BOLD, 22));
-        title.setForeground(Theme.TEXT_PRIMARY);
-
-        JLabel sub = new JLabel("Danh sách các cao thủ dò mìn đối kháng hàng đầu");
-        sub.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.PLAIN, 12));
-        sub.setForeground(Theme.TEXT_SECONDARY);
-
-        titleBlock.add(title);
-        titleBlock.add(Box.createVerticalStrut(4));
-        titleBlock.add(sub);
-        title.setAlignmentX(Component.LEFT_ALIGNMENT);
-        sub.setAlignmentX(Component.LEFT_ALIGNMENT);
-        top.add(titleBlock, BorderLayout.WEST);
-
-        leaderboardBoardSelector = createBoardSelector();
-        leaderboardBoardSelector.setPreferredSize(new Dimension(224, 48));
-        leaderboardBoardSelector.addActionListener(e -> callback.send("GET_LEADERBOARD|" + getLeaderboardBoardId()));
-        JPanel boardPickerArea = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-        boardPickerArea.setOpaque(false);
-        boardPickerArea.add(leaderboardBoardSelector);
-        top.add(boardPickerArea, BorderLayout.EAST);
-
-        panel.add(top, BorderLayout.NORTH);
-
-        // Table Container
-        JPanel tablePanel = new JPanel(new BorderLayout()) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2.setColor(new Color(0x0C, 0x13, 0x26, 210));
-                g2.fillRoundRect(0, 0, getWidth(), getHeight(), CORNER_RADIUS, CORNER_RADIUS);
-                g2.setColor(new Color(0x1F, 0x2A, 0x40));
-                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, CORNER_RADIUS, CORNER_RADIUS);
-                g2.dispose();
-            }
-        };
-        tablePanel.setOpaque(false);
-        tablePanel.setBorder(new EmptyBorder(16, 20, 16, 20));
-
-        // Table Column Headers
-        JPanel colHeader = new JPanel(new GridLayout(1, 6, 8, 0));
-        colHeader.setOpaque(false);
-        colHeader.setBorder(new EmptyBorder(0, 8, 12, 8));
-        String[] cols = {"HẠNG", "NGƯỜI CHƠI", "ĐIỂM SỐ", "THẮNG", "THUA", "TỈ LỆ THẮNG"};
-        for (String c : cols) {
-            JLabel l = new JLabel(c, SwingConstants.CENTER);
-            l.setFont(new Font(Theme.SMALL_FONT.getFamily(), Font.BOLD, 10));
-            l.setForeground(Theme.TEXT_MUTED);
-            colHeader.add(l);
-        }
-        tablePanel.add(colHeader, BorderLayout.NORTH);
-
-        leaderboardRowsContainer = new JPanel();
-        leaderboardRowsContainer.setLayout(new BoxLayout(leaderboardRowsContainer, BoxLayout.Y_AXIS));
-        leaderboardRowsContainer.setOpaque(false);
-
-        JScrollPane scroll = new JScrollPane(leaderboardRowsContainer,
-                JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-        scroll.setOpaque(false);
-        scroll.getViewport().setOpaque(false);
-        scroll.setBorder(null);
-        styleScrollBar(scroll.getVerticalScrollBar());
-        tablePanel.add(scroll, BorderLayout.CENTER);
-
-        panel.add(tablePanel, BorderLayout.CENTER);
-        return panel;
-    }
-
-    private JPanel createLeaderboardTableRow(int rank, String pName, int pScore, int pWins, int pLosses, int pDraws) {
-        final boolean isMe = pName.equals(username);
-        int total = pWins + pLosses + pDraws;
-        int rate = total > 0 ? (pWins * 100 / total) : 0;
-
-        JPanel row = new JPanel(new GridLayout(1, 6, 8, 0)) {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                if (isMe) {
-                    g2.setColor(new Color(Theme.PRIMARY.getRed(), Theme.PRIMARY.getGreen(), Theme.PRIMARY.getBlue(), 35));
-                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
-                    g2.setColor(Theme.ACCENT_CYAN);
-                    g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
-                } else {
-                    g2.setColor(new Color(0x13, 0x1A, 0x2E, 140));
-                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
-                }
-                g2.dispose();
-            }
-        };
-        row.setOpaque(false);
-        row.setBorder(new EmptyBorder(8, 8, 8, 8));
-        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-
-        // Rank text without emojis
-        String rankStr;
-        Color rankColor;
-        if (rank == 1) { rankStr = "TOP 1"; rankColor = Theme.WARNING; }
-        else if (rank == 2) { rankStr = "TOP 2"; rankColor = new Color(0xC0, 0xC8, 0xD8); }
-        else if (rank == 3) { rankStr = "TOP 3"; rankColor = new Color(0xCD, 0x7F, 0x32); }
-        else { rankStr = String.valueOf(rank); rankColor = Theme.TEXT_SECONDARY; }
-
-        JLabel rLbl = new JLabel(rankStr, SwingConstants.CENTER);
-        rLbl.setFont(new Font(Theme.BODY_FONT.getFamily(), Font.BOLD, 13));
-        rLbl.setForeground(rankColor);
-
-        JLabel nameLbl = new JLabel(pName, SwingConstants.CENTER);
-        nameLbl.setFont(new Font(Theme.BODY_FONT.getFamily(), isMe ? Font.BOLD : Font.PLAIN, 13));
-        nameLbl.setForeground(isMe ? Theme.ACCENT_CYAN : Theme.TEXT_PRIMARY);
-
-        JLabel sLbl = new JLabel(String.valueOf(pScore), SwingConstants.CENTER);
-        sLbl.setFont(new Font(Theme.BODY_FONT.getFamily(), Font.BOLD, 13));
-        sLbl.setForeground(Theme.WARNING);
-
-        JLabel wLbl = new JLabel(String.valueOf(pWins), SwingConstants.CENTER);
-        wLbl.setFont(Theme.BODY_FONT);
-        wLbl.setForeground(Theme.SUCCESS);
-
-        JLabel lLbl = new JLabel(String.valueOf(pLosses), SwingConstants.CENTER);
-        lLbl.setFont(Theme.BODY_FONT);
-        lLbl.setForeground(Theme.DANGER);
-
-        JLabel rateLbl = new JLabel(rate + "%", SwingConstants.CENTER);
-        rateLbl.setFont(new Font(Theme.BODY_FONT.getFamily(), Font.BOLD, 12));
-        rateLbl.setForeground(Theme.TEXT_SECONDARY);
-
-        row.add(rLbl);
-        row.add(nameLbl);
-        row.add(sLbl);
-        row.add(wLbl);
-        row.add(lLbl);
-        row.add(rateLbl);
-        return row;
+        rankingPanel = new RankingPanel(username, mode -> callback.send("GET_LEADERBOARD|" + mode));
+        leaderboardBoardSelector = rankingPanel.selector;
+        leaderboardRowsContainer = rankingPanel.rows;
+        return rankingPanel;
     }
 
     // ================================================================
@@ -1457,6 +1338,20 @@ public class HomeScreen extends JPanel {
     //  VIEW 4: HOW TO PLAY GUIDE (No emojis)
     // ================================================================
 
+    private static final class GuideCardsPanel extends JPanel implements javax.swing.Scrollable {
+        GuideCardsPanel() { super(new GridLayout(1,3,20,0));setOpaque(false); }
+        @Override public Dimension getPreferredSize() {
+            int width=getParent()==null?1080:getParent().getWidth();
+            return new Dimension(1080,width<800?800:width<1000?660:560);
+        }
+        @Override public Dimension getMinimumSize(){return new Dimension(0,0);}
+        public Dimension getPreferredScrollableViewportSize(){return new Dimension(1080,560);}
+        public int getScrollableUnitIncrement(java.awt.Rectangle visible,int orientation,int direction){return 24;}
+        public int getScrollableBlockIncrement(java.awt.Rectangle visible,int orientation,int direction){return Math.max(24,visible.height-24);}
+        public boolean getScrollableTracksViewportWidth(){return true;}
+        public boolean getScrollableTracksViewportHeight(){return false;}
+    }
+
     private JPanel buildHowToPlayView() {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setOpaque(false);
@@ -1487,31 +1382,37 @@ public class HomeScreen extends JPanel {
         panel.add(top, BorderLayout.NORTH);
 
         // 3 Cards Grid (No emojis)
-        JPanel cardsGrid = new JPanel(new GridLayout(1, 3, 20, 0));
+        JPanel cardsGrid = new GuideCardsPanel();
         cardsGrid.setOpaque(false);
 
-        cardsGrid.add(createRuleCard("MỤC TIÊU TRẬN ĐẤU",
+        cardsGrid.add(createRuleCard(0, "MỤC TIÊU TRẬN ĐẤU",
                 "• Chọn bàn 9×9 (10 mìn), 16×16 (40 mìn) hoặc 16×30 (99 mìn). Thành tích từng loại bàn độc lập.\n\n" +
-                "• Ai hoàn thành mở hết 71 ô an toàn trước sẽ giành chiến thắng.\n\n" +
+                "• Mở hết ô an toàn trước đối thủ để chiến thắng: Cơ bản 71 ô, Nâng cao 216 ô, Chuyên gia 381 ô.\n\n" +
                 "• Tiến trình mở ô và cắm cờ được đồng bộ theo thời gian thực."));
 
-        cardsGrid.add(createRuleCard("THAO TÁC ĐIỀU KHIỂN",
+        cardsGrid.add(createRuleCard(1, "THAO TÁC ĐIỀU KHIỂN",
                 "• Chuột trái: Mở ô an toàn.\n\n" +
                 "• Chuột phải: Cắm hoặc gỡ cờ cảnh báo (Flag).\n\n" +
                 "• Số hiển thị trên ô cho biết số mìn xung quanh (từ 1 đến 8).\n\n" +
                 "• Hãy cẩn thận từng cú click — tốc độ và độ chuẩn xác là chìa khóa!"));
 
-        cardsGrid.add(createRuleCard("CƠ CHẾ TÍNH ĐIỂM",
+        cardsGrid.add(createRuleCard(2, "CƠ CHẾ TÍNH ĐIỂM",
                 "• Hoàn thành bàn cờ trước: THẮNG (+3 điểm).\n\n" +
                 "• Đạp trúng mìn: BỊ XỬ THUA NGAY LẬP TỨC (+0 điểm).\n\n" +
-                "• Hết 5 phút mà chưa ai hoàn thành: HÒA (+1 điểm).\n\n" +
+                "• Hết thời gian mà chưa ai hoàn thành: HÒA (+1 điểm). Giới hạn lần lượt là 5, 10 và 15 phút.\n\n" +
                 "• Đối thủ thoát trận hoặc đầu hàng: THẮNG (+3 điểm)."));
 
-        panel.add(cardsGrid, BorderLayout.CENTER);
+        JScrollPane guideScroll = new JScrollPane(cardsGrid);
+        guideScroll.setOpaque(false); guideScroll.getViewport().setOpaque(false);
+        guideScroll.setBorder(null);
+        guideScroll.getVerticalScrollBar().setUnitIncrement(24);
+        guideScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        styleScrollBar(guideScroll.getVerticalScrollBar());
+        panel.add(guideScroll, BorderLayout.CENTER);
         return panel;
     }
 
-    private JPanel createRuleCard(String heading, String body) {
+    private JPanel createRuleCard(int illustration, String heading, String body) {
         JPanel card = new JPanel(new BorderLayout(0, 12)) {
             @Override
             protected void paintComponent(Graphics g) {
@@ -1532,9 +1433,16 @@ public class HomeScreen extends JPanel {
         hLbl.setForeground(Theme.ACCENT_CYAN);
         card.add(hLbl, BorderLayout.NORTH);
 
-        JLabel text = new JLabel("<html><body style='width: 200px; color: #94A3B8; font-size: 11px; line-height: 1.5;'>"
-                + body.replace("\n", "<br>") + "</body></html>");
-        card.add(text, BorderLayout.CENTER);
+        JPanel content = new JPanel(new BorderLayout(0,18));
+        content.setOpaque(false);
+        content.add(new GuideArtwork(illustration),BorderLayout.NORTH);
+        javax.swing.JTextArea text = new javax.swing.JTextArea(body);
+        text.setOpaque(false);text.setEditable(false);text.setFocusable(false);
+        text.setLineWrap(true);text.setWrapStyleWord(true);
+        text.setFont(Theme.BODY_FONT.deriveFont(13f));text.setForeground(Theme.TEXT_SECONDARY);
+        text.setBorder(null);
+        content.add(text,BorderLayout.CENTER);
+        card.add(content,BorderLayout.CENTER);
         return card;
     }
 
@@ -1598,6 +1506,10 @@ public class HomeScreen extends JPanel {
     private void switchTab(String tabName) {
         this.currentTab = tabName;
         cardLayout.show(cardsPanel, tabName);
+        if(TAB_LOBBY.equals(tabName) && chatPanel!=null && chatSession.activePeer()!=null) {
+            chatPanel.refresh(true);
+            refreshOnlineList();
+        }
 
         for (NavTabButton b : navTabButtons) {
             b.setActive(b.tabKey.equals(tabName));
@@ -1954,9 +1866,7 @@ public class HomeScreen extends JPanel {
         this.wins = wins;
         this.losses = losses;
         this.draws = draws;
-        if (rank > 0) {
-            this.myRank = rank;
-        }
+        this.myRank = Math.max(0, rank);
         int total = wins + losses + draws;
         int winRate = total > 0 ? (wins * 100 / total) : 0;
 
@@ -1968,7 +1878,13 @@ public class HomeScreen extends JPanel {
         statTotalVal.setText(String.valueOf(total));
         winRateLabel.setText("TỈ LỆ THẮNG: " + winRate + "%");
 
-        rankBadgeLabel.setText(myRank > 0 ? "Top " + myRank : "Top 1");
+        rankBadgeLabel.setText(myRank > 0 ? "Top " + myRank : "Chưa xếp hạng");
+        rankBadgeLabel.setForeground(profileAccent());
+        profileScoreLabel.setForeground(myRank>=1&&myRank<=3?profileAccent():new Color(250,200,94));
+        profileWinRateBar.setForeground(profileAccent());
+        profileCardPanel.repaint();
+        profileWinRateBar.setValue(winRate);
+        avatarFramePanel.repaint();
     }
 
     public void setAvatarBase64(String base64) {
@@ -1978,6 +1894,7 @@ public class HomeScreen extends JPanel {
             BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
             if (img != null) {
                 this.customAvatar = img;
+                if (rankingPanel != null) rankingPanel.setAvatar(img);
                 if (avatarFramePanel != null) avatarFramePanel.repaint();
                 if (navAvatarPanel != null) navAvatarPanel.repaint();
             }
@@ -2030,36 +1947,7 @@ public class HomeScreen extends JPanel {
     }
 
     public void setLeaderboard(String data) {
-        leaderboardRowsContainer.removeAll();
-        if (data == null || data.isEmpty()) {
-            JLabel empty = new JLabel("Chưa có dữ liệu bảng xếp hạng.", SwingConstants.CENTER);
-            empty.setFont(Theme.BODY_FONT);
-            empty.setForeground(Theme.TEXT_MUTED);
-            empty.setBorder(new EmptyBorder(30, 0, 30, 0));
-            empty.setAlignmentX(Component.CENTER_ALIGNMENT);
-            leaderboardRowsContainer.add(empty);
-        } else {
-            int rank = 1;
-            for (String entry : data.split(";")) {
-                String[] parts = entry.split("~");
-                if (parts.length >= 5) {
-                    if ("admin".equalsIgnoreCase(parts[0])) continue;
-                    try {
-                        int curRank = rank++;
-                        leaderboardRowsContainer.add(createLeaderboardTableRow(
-                                curRank, parts[0],
-                                Integer.parseInt(parts[1]),
-                                Integer.parseInt(parts[2]),
-                                Integer.parseInt(parts[3]),
-                                Integer.parseInt(parts[4])
-                        ));
-                        leaderboardRowsContainer.add(Box.createVerticalStrut(6));
-                    } catch (NumberFormatException ignored) {}
-                }
-            }
-        }
-        leaderboardRowsContainer.revalidate();
-        leaderboardRowsContainer.repaint();
+        rankingPanel.setData(data);
     }
 
     public void setHistory(String data) {
@@ -2173,6 +2061,16 @@ public class HomeScreen extends JPanel {
                 onlineListPanel.add(Box.createVerticalStrut(6));
             }
         }
+        boolean recentHeader=false;
+        for(String peer:chatSession.peers()) {
+            if(!"OFFLINE".equals(chatPresence(peer)))continue;
+            if(!recentHeader) {
+                JLabel recent=RankingPanel.label("TRÒ CHUYỆN GẦN ĐÂY",10,Theme.TEXT_MUTED);
+                recent.setBorder(new EmptyBorder(16,4,10,4));onlineListPanel.add(recent);recentHeader=true;
+            }
+            onlineListPanel.add(createOnlinePlayerRow(peer,0,"OFFLINE"));onlineListPanel.add(Box.createVerticalStrut(6));
+        }
+        if(chatPanel!=null && chatSession.activePeer()!=null)chatPanel.refresh(isChatVisible(chatSession.activePeer()));
         onlineCountBadge.setText("● " + onlinePlayers.size() + " TRỰC TUYẾN");
         onlineListPanel.revalidate();
         onlineListPanel.repaint();

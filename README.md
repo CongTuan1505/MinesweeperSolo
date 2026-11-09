@@ -202,6 +202,24 @@ Các lệnh quản trị và giám sát được kiểm tra quyền ở server. 
 Các nút bấm, menu, checkbox và bộ chọn chế độ có tiếng click nhẹ, kể cả khi kích hoạt bằng bàn phím.
 Âm click dùng chung nút bật/tắt âm thanh; cập nhật dữ liệu tự động không phát tiếng click.
 
-Nhạc nền ambient nhẹ được tổng hợp cục bộ, lặp liên tục trong ứng dụng và phát độc lập với hiệu ứng.
+Nhạc nền điện tử kiểu game giải đố (140 BPM, giai điệu arcade, bass đảo quãng tám và nhịp trống rõ hơn) được tổng hợp cục bộ, lặp liên tục trong ứng dụng và phát độc lập với hiệu ứng.
 Nút Âm thanh bật/tắt đồng thời cả nhạc nền và hiệu ứng; tắt sẽ dừng nhạc ngay, bật sẽ phát lại.
 Không cần tải nhạc hoặc thêm thư viện.
+
+Bảng xếp hạng có bục top 3, ảnh đại diện dạng chữ cái và thanh tỷ lệ thắng; profile hiển thị vòng tỷ lệ thắng
+và thống kê riêng theo chế độ. Ba ảnh hướng dẫn gốc nằm trong src/main/resources/images/guide,
+minh họa mục tiêu mở ô, điều khiển chuột và cách tính điểm. Nội dung hướng dẫn có thể cuộn khi thu nhỏ cửa sổ.
+
+## Trò chuyện riêng trong sảnh
+
+Chọn một người chơi rồi bấm Trò chuyện bên dưới Thách đấu để chuyển khung bên phải sang chat riêng.
+Nút Quay lại đưa bạn về danh sách. Enter gửi tin; Shift+Enter xuống dòng; tối đa 500 ký tự mỗi tin.
+Tin gửi chỉ xuất hiện trong lịch sử sau khi server xác nhận. Khi người nhận ngoại tuyến, bản nháp được giữ.
+Có báo tin chưa đọc và lịch sử trò chuyện gần đây, kể cả khi đối phương đã thoát.
+Lịch sử giữ tối đa 100 tin mỗi người trong phiên đăng nhập, được giữ khi vào trận/quay về sảnh và xóa khi đăng xuất;
+không lưu tin nhắn vào database. Chat cần server và client cùng được cập nhật.
+
+Nếu nút chat bị giữ ở “Đang gửi”, hãy khởi động lại server sau khi cập nhật mã nguồn.
+Các script chạy nay tự biên dịch trước khi khởi động. Client nhận biết phản hồi server cũ,
+và tự bỏ trạng thái chờ sau 5 giây nếu không có xác nhận; bản nháp được giữ để người dùng kiểm tra và thử lại.
+Tin chưa được xác nhận không tự động gửi lại, tránh gửi trùng khi mạng chậm.

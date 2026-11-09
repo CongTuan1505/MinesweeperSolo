@@ -354,7 +354,7 @@ public class LoginScreen extends JPanel {
         form.add(Box.createVerticalStrut(8));
 
         // Submit button
-        JPanel loginBtn = createActionButton("ĐĂNG NHẬP", "→");
+        JPanel loginBtn = createActionButton("ĐĂNG NHẬP", "");
         loginBtn.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) { submit("LOGIN"); }
@@ -745,7 +745,7 @@ public class LoginScreen extends JPanel {
         btn.setAlignmentX(Component.LEFT_ALIGNMENT);
         btn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        JLabel label = new JLabel(text + "  " + arrow, SwingConstants.CENTER);
+        JLabel label = new JLabel(arrow.isEmpty() ? text : text + "  " + arrow, SwingConstants.CENTER);
         label.setFont(BTN_FONT);
         label.setForeground(Color.WHITE);
         btn.add(label, BorderLayout.CENTER);

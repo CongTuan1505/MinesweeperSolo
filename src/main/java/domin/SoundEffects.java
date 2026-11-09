@@ -8,7 +8,7 @@ import javax.sound.sampled.*;
 
 /** Short, locally synthesized effects. Audio work never blocks the Swing event thread. */
 public final class SoundEffects implements AutoCloseable {
-    public enum Cue { CLICK, OPEN, REGION, FLAG, UNFLAG, START, CHALLENGE, WIN, LOSE, DRAW, MINE_LOSS, WARNING }
+    public enum Cue { CLICK, MESSAGE, OPEN, REGION, FLAG, UNFLAG, START, CHALLENGE, WIN, LOSE, DRAW, MINE_LOSS, WARNING }
     interface Backend { Clip open(byte[] pcm) throws Exception; }
     static final AudioFormat FORMAT = new AudioFormat(22050, 16, 1, true, false);
     private static final class Shared {
@@ -135,6 +135,7 @@ public final class SoundEffects implements AutoCloseable {
         double[] notes;
         double beat;
         switch (cue) {
+            case MESSAGE: notes = new double[]{659.25, 880}; beat = .065; break;
             case CLICK: notes = new double[]{1050}; beat = .045; break;
             case OPEN: notes = new double[]{820}; beat = .065; break;
             case REGION: notes = new double[]{660, 990}; beat = .065; break;
